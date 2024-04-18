@@ -13,62 +13,50 @@ Height to Byte function, Byte to Height function, start, min, max height setting
 
 V5 13/04/24
 JRK set to wire2, Multifile, PID integration. Functions for chamber pressure
+
+V6 18/04/24
+Nick got a hold of it
 */
 
 
 /*
 To do
 Test SD card
-PID autotune
 Erranious value detection
 */
 
 #include "Defines.h"
 #include "JrkG2.h"
-#include "Autotune.h"
 
-unsigned long timeInterval = 1000;  // Initial interval between sensor readings (ms)
-unsigned long previousTime = 0;     // Initial time variable (ms)
-const float targetAltitude = 2500;  // Extra condition to run main script. Underestimate of expected apogee (m)
-bool experimentPrimed = false;      // Actuator off until true
-bool sdAv = true;
+unsigned long timeInterval = standbyTime;  // Initial interval between sensor readings (ms)
+unsigned long previousTime = 0;            // Initial time variable (ms)
+bool experimentPrimed = false;             // Actuator off until true
+bool sdAv = true;                          // Is there an SD card
 
-unsigned long currentTime;      // Variable for time (ms)
-static float previousAltitude;  // Sets variable for previous altitude (m)
-float altitude;                 // Reads altitude (check sensor) (m)
-unsigned long deltaTime;        // Calculates time difference (s)
-float actualVelocity;           // Velocity read by PCB pressure sensor (m/s)
-float pressureRocket;           // Reads altitude (check which sensor) (hPa)
-float temperatureRocket;        // Reads chamber's temperature (C)
-//float densityRocket;             // Calculates air density in rocket (kg/m^3)
-float pressureChamber;     // Reads chamber's pressure (hPa)
-float temperatureChamber;  // Reads chamber's temperature (C)
-float actuatorHeight;      // Reads acuator's height (mm)
+unsigned long currentTime;  // Variable for time (ms)
+float previousAltitude;     // Sets variable for previous altitude (m)
+float altitude = 0;         // Reads altitude (check sensor) (m)
+unsigned long deltaTime;    // Calculates time difference (s)
+float actualVelocity;       // Velocity read by PCB pressure sensor (m/s)
+float pressureRocket;       // Reads altitude (check which sensor) (hPa)
+float temperatureRocket;    // Reads chamber's temperature (C)
+//float densityRocket;      // Calculates air density in rocket (kg/m^3)
+float pressureChamber;      // Reads chamber's pressure (hPa)
+float temperatureAtmos;     // Reads the Atmos temp (c)
+float temperatureChamber;   // Reads chamber's temperature (C)
+float actuatorHeight;       // Reads acuator's height (mm)
 
-static float Pi = M_PI;    // Pi
-float r = 0.02;            // Pressure chamber radius (m)
-float A = Pi * pow(r, 2);  // Area (m^2)
-float hChamber;            // Height for volume in chamber (m)
-float V;                   // Volume (m^3)
-int n;                     // Moles
-float R = 8.314;           // Ideal gas constant  (J/K/mol)
-float T;                   // Temperature (K)
-
-// PID Values
-uint16_t proportionalCoef = 10;
-uint16_t proportionalExpo = 0;
-uint16_t integralCoef = 819;
-uint16_t integralExpo = 13;
-uint16_t derivativeCoef = 5;
-uint16_t derivativeExpo = 0;
-uint16_t PIDPeriod = 30;
-uint16_t integralLimit = 6000;
+float hChamber;   // Height for volume in chamber (m)
+float V;          // Volume (m^3)
+int n;            // Moles
+float R = 8.314;  // Ideal gas constant  (J/K/mol)
+float T;          // Temperature (K)
 
 JrkG2I2C jrk;           // Motor Controller
-Adafruit_BMP280 Atmos;  // First Chamb80 sensor at address 0x76
-Adafruit_BMP280 Chamb;  // Second Chamb80 sensor at address 0x77
+Adafruit_BMP280 Atmos;  // First BMP280 sensor at address 0x76
+Adafruit_BMP280 Chamb;  // Second BMP280 sensor at address 0x77
 
-const int chipSelect = BUILTIN_SDCARD;  // Initialises SD card
+const int chipSelect = BUILTIN_SDCARD;  // SD card CS pin
 File dataFile;                          // Sets a data file
 String currentFileName;                 // For multiple files
 
@@ -86,7 +74,7 @@ String getNextFileName() {
 
 // Function to work in mm for actuator
 int heightToByte(float mm1) {
-  int byte1 = grad * mm1;
+  int byte1 = actuatorScale * mm1;
   if (mm1 > maxHeight) {
     mm1 = maxHeight;
   }
@@ -98,27 +86,19 @@ int heightToByte(float mm1) {
 
 // Function to convert feedback to a height
 float byteToHeight(int byte2) {
-  int mm2 = byte2 / grad;
+  int mm2 = byte2 / actuatorScale;
   return mm2;
 }
 
 // Function to calculate initial moles
-int moles(float V, float temperatureChamber, float hChamber, float pressureChamber) {
-  float num = A * hChamber * pressureChamber;
-  float den = R * temperatureChamber;
-  n = (int)(num / den);
-  return n;
-}
-
-//Density outside chamber
-float denRocket(float temperatureRocket, float pressureRocket) {
-  float densityRocket = pressureRocket / (R * temperatureRocket);
-  return densityRocket;
+float moles() {
+  n=pressureChamber*V/r*temperatureChamber;
+  return(n);
 }
 
 // Function to calculate height in chamber
-float nextHeight(float V, float temperatureChamber, int n, float pressureRocket) {
-  float num = (float)n * R * temperatureChamber;
+float nextHeight() {
+  float num = n * R * temperatureChamber;
   float den = pressureRocket * A;
   hChamber = num / den;
 
@@ -136,8 +116,8 @@ void setup() {
   pinMode(motorGate, OUTPUT);
   pinMode(valveGate, OUTPUT);
 
-  digitalWrite(motorGate, LOW);  // Turns actuator on, LED 3 on
-  digitalWrite(valveGate, LOW);  // Opens air valve, LED 4 on
+  digitalWrite(motorGate, LOW);   // Turns actuator off, LED 3 on
+  digitalWrite(valveGate, HIGH);  // Opens air valve, LED 4 on
 
   delay(1000);
 
@@ -145,7 +125,7 @@ void setup() {
   jrk.setProportionalCoefficient(proportionalCoef, proportionalExpo);
   jrk.setIntegralCoefficient(integralCoef, integralExpo);
   jrk.setDerivativeCoefficient(derivativeCoef, derivativeExpo);
-  jrk.setPIDPeriod(PIDPeriod);
+  jrk.setPIDPeriod(PIDControlPeriod);
   jrk.setIntegralLimit(integralLimit);
 
   jrk.setTarget(heightToByte(startHeight));
@@ -160,102 +140,90 @@ void setup() {
   if (sdAv) {
     dataFile = SD.open(currentFileName.c_str(), FILE_WRITE);  // Initialize the dataFile object
     if (dataFile) {
-      dataFile.println("Timestamp (ms),Altitude (m),Measured Velocity (m/s),Atmos_P (hPa),Chamb_P (hPa),Chamb_T (C), Actuator Height (mm)");  //Header Row
+      dataFile.println("Timestamp (ms),Altitude (m),Measured Velocity (m/s),Atmos_P (hPa),Chamb_P (hPa),Atmos_T (C),Chamb_T (C), Actuator Height (mm)");  //Header Row
       dataFile.close();
     } else {
       digitalWrite(BUILTIN_LED, HIGH);
     }
   }
 
-  unsigned int status1;
-  unsigned int status2;
-
+  int status;
   // Check and initialize the first Chamb80 sensor at address 0x76
-  status1 = Atmos.begin(0x77);
-  if (!status1) {
+  status = Atmos.begin(0x77);
+  if (!status) {
     digitalWrite(LED1, HIGH);  // If the Atmos isn't detected LED 1 on
+    char buff[20];
+    sprintf(buff, "Atmos BP Error: %i", status);
+    Serial.println(buff);
     while (1) delay(10);
   }
-  Atmos.setSampling(Atmos.MODE_NORMAL,Atmos.SAMPLING_X16,Atmos.SAMPLING_X16,Atmos.FILTER_X16,Atmos.STANDBY_MS_1);
+  Atmos.setSampling(Atmos.MODE_NORMAL, Atmos.SAMPLING_X16, Atmos.SAMPLING_X16, Atmos.FILTER_X16, Atmos.STANDBY_MS_1);
 
   // Check and initialize the second Chamb80 sensor at address 0x77
-  status2 = Chamb.begin(0x76);
-  if (!status2) {
+  status = Chamb.begin(0x76);
+  if (!status) {
     digitalWrite(LED2, HIGH);  // If the Chamb isn't detected LED 2 on
+    char buff[20];
+    sprintf(buff, "Atmos BP Error: %i", status);
+    Serial.println(buff);
     while (1) delay(10);
   }
-  Chamb.setSampling(Chamb.MODE_NORMAL,Chamb.SAMPLING_X16,Chamb.SAMPLING_X16,Chamb.FILTER_X16,Chamb.STANDBY_MS_1);
-
-  delay(1000);
-
-  pressureChamber = Chamb.readPressure();            // Reads chamber pressure (check sensor)
-  temperatureChamber = Chamb.readTemperature();      // Reads chamber pressure (check sensor)
-  actuatorHeight = byteToHeight(jrk.getFeedback());  // Reads actuator height
-
-  digitalWrite(motorGate, LOW);  // Turns actuator off, LED 3 off
-  digitalWrite(valveGate, LOW);  // Opens air valve, LED 4 off
+  Chamb.setSampling(Chamb.MODE_NORMAL, Chamb.SAMPLING_X16, Chamb.SAMPLING_X16, Chamb.FILTER_X16, Chamb.STANDBY_MS_1);
 
   attachInterrupt(digitalPinToInterrupt(testPin), Test, HIGH);  // Assigns test function to test pin
+  previousTime = millis();
+  previousAltitude = Atmos.readAltitude();
 }
 
 void loop() {
   SerialCMDHandle();
-  currentTime = millis();                              // Reads current time since boot
-  if (currentTime - previousTime >= timeInterval) {    // Loop to read data
-    altitude = Atmos.readAltitude();                   // Reads altitude (check sensor)
-    pressureRocket = Atmos.readPressure();             // Reads rocket pressure (check sensor)
-    pressureChamber = Chamb.readPressure();            // Reads chamber pressure (check sensor)
-    temperatureChamber = Chamb.readTemperature();      // Reads chamber pressure (check sensor)
-    actuatorHeight = byteToHeight(jrk.getFeedback());  // Reads actuator height
+  currentTime = millis();                              
+  if (currentTime - previousTime >= timeInterval) {    
+    altitude = Atmos.readAltitude();                   
+    pressureRocket = Atmos.readPressure();             
+    pressureChamber = Chamb.readPressure();            
+    temperatureAtmos = Atmos.readTemperature();
+    temperatureChamber = Chamb.readTemperature();      
+    actuatorHeight = byteToHeight(jrk.getFeedback());  
 
     unsigned long deltaTime = (currentTime - previousTime) / 100;             // Calculates time difference (seconds)
-    float actualVelocity = (altitude - previousAltitude) / (float)deltaTime;  // Calculates velocity (m/s)
   }
-  if (altitude >= targetAltitude) {
-    timeInterval = 10;
-  }
-  if (!experimentPrimed) {  // until conditions met don't run experiement
-    if (altitude >= targetAltitude && actualVelocity < 0) {
-      // Conditions are met, set the flag, change time interval
-      experimentPrimed = true;
-    }
-  } else {
+  actualVelocity = (altitude - previousAltitude) / deltaTime;               // Calculates velocity (m/s)
+  if (altitude >= targetAltitude) {  //If over height to confirm launch
+    timeInterval = activeTime;
+  }actualVelocity = (altitude - previousAltitude) / deltaTime;               // Calculates velocity (m/s)
+  if (experimentPrimed) {  // until conditions met don't run experiement
     V = (absMax - actuatorHeight) * A;
     Controller();
   }
+  else {
+    if ((altitude >= targetAltitude) && (actualVelocity < 0)) {
+      // Conditions are met, set the flag
+      experimentPrimed = true;
+    }
+  }
 
-  static float previousTime = currentTime;  // Iterates for next loop
-  static float previousAltitude = altitude;
+  previousTime = currentTime;  // Iterates for next loop
+  previousAltitude = altitude;
   DataSave();  // Saves data
 }
 
 void Controller() {
-  digitalWrite(valveGate, LOW);  // Opens Closes valve, LED 4 on
-  jrk.setTarget(heightToByte(nextHeight(V, temperatureChamber, n, pressureRocket)));
+  digitalWrite(valveGate, LOW);  // Closes valve, LED 4 on
+  jrk.setTarget(heightToByte(nextHeight()));
 
   return;
 }
 
 void DataSave() {
-  dataFile = SD.open(currentFileName.c_str(), FILE_WRITE);
-  if (dataFile) {
-    dataFile.print(currentTime);
-    dataFile.print(",");  // Time since power (milliseconds)
-    dataFile.print(altitude);
-    dataFile.print(",");  // Altitude (m)
-    dataFile.print(actualVelocity);
-    dataFile.print(",");  // Rocket velocity (m/s)
-    dataFile.print(pressureRocket);
-    dataFile.print(",");  // Pressure at PCB (hPa)
-    dataFile.print(pressureChamber);
-    dataFile.print(",");  // Pressure in chamber (hPa)
-    dataFile.print(temperatureChamber);
-    dataFile.print(",");  // Temperature in chamber (C)
-    dataFile.print(actuatorHeight);
-    dataFile.print(",");  // Pressure in chamber (hPa)
-    dataFile.println();
-
-    dataFile.close();  // Close the file
+  if (sdAv) {
+    dataFile = SD.open(currentFileName.c_str(), FILE_WRITE);
+    if (dataFile) {
+      char buff[255];
+      sprintf(buff,"%g , %g , %g , %g , %g , %g , %g , %g \n",currentTime,altitude,actualVelocity,pressureRocket,pressureChamber,temperatureAtmos,temperatureChamber,actuatorHeight);
+      dataFile.print(buff);  // Pressure in chamber (hPa)
+      dataFile.close();  // Close the file
+    }
   }
 }
 
@@ -286,6 +254,14 @@ void Test() {
   _delay_us(2000000);
 
   sei();
+}
+
+void clearArray(char *Array, uint8_t len) {
+  while (len != 0) {
+    Array[len - 1] = 0;
+    len--;
+  }
+  return;
 }
 
 void SerialCMDHandle() {
@@ -368,26 +344,44 @@ void SerialCMDHandle() {
         switch (buffer[1]) {
           case 'S':
             {  //Set input of mm*10
-              char numBuff[3] = {buffer[3],buffer[4],buffer[5]};
-              float set = strtol(numBuff,NULL,10)/10;
+              char numBuff[3] = { buffer[3], buffer[4], buffer[5] };
+              float set = strtol(numBuff, NULL, 10) / 10;
               char buff[50];
-              sprintf(buff,"Going to %f", set);
+              sprintf(buff, "Going to %f", set);
               Serial.println(buff);
               jrk.setTarget(heightToByte(set));
             }
             break;
         }
+      case 'T':
+        {
+          Autotune();
+        }
+        break;
     }
-    clearArray(buffer, 100);
-    index = 0;
   }
+  clearArray(buffer, 100);
+  index = 0;
   return;
 }
 
-void clearArray(char *Array, uint8_t len) {
-  while (len != 0) {
-    Array[len - 1] = 0;
-    len--;
+void Autotune() {
+  PIDAutotuner tuner = PIDAutotuner();
+  tuner.setTargetInputValue(tuneVal);
+  tuner.setLoopInterval(PIDControlPeriod);
+  tuner.setOutputRange(minHeight, maxHeight);
+  tuner.setZNMode(PIDAutotuner::ZNModeBasicPID);
+  tuner.startTuningLoop(micros());
+
+  long microseconds;
+  while (!tuner.isFinished()) {
+    microseconds = micros();
+    double input = byteToHeight(jrk.getFeedback());
+    double output = tuner.tunePID(input, microseconds);
+    jrk.setTarget(heightToByte(output));
+    while (micros() - microseconds < PIDControlPeriod) delayMicroseconds(1);
   }
-  return;
+  char buff[50];
+  sprintf(buff, "Kp %f, Ki %f, Kd %f", tuner.getKp(), tuner.getKi(), tuner.getKd());
+  Serial.println(buff);
 }
