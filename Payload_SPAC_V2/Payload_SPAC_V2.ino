@@ -28,10 +28,10 @@ Erranious value detection
 #include "Defines.h"
 #include "JrkG2.h"
 
-unsigned long timeInterval = standbyTime;  // Initial interval between sensor readings (ms)
-unsigned long previousTime = 0;            // Initial time variable (ms)
-bool experimentPrimed = false;             // Actuator off until true
-bool sdAv = true;                          // Is there an SD card
+unsigned long timeInterval = 1000;  // Initial interval between sensor readings (ms)
+unsigned long previousTime = 0;     // Initial time variable (ms)
+bool experimentPrimed = false;      // Actuator off until true
+bool sdAv = true;                   // Is there an SD card
 
 unsigned long currentTime;  // Variable for time (ms)
 float previousAltitude;     // Sets variable for previous altitude (m)
@@ -41,10 +41,10 @@ float actualVelocity;       // Velocity read by PCB pressure sensor (m/s)
 float pressureRocket;       // Reads altitude (check which sensor) (hPa)
 float temperatureRocket;    // Reads chamber's temperature (C)
 //float densityRocket;      // Calculates air density in rocket (kg/m^3)
-float pressureChamber;      // Reads chamber's pressure (hPa)
-float temperatureAtmos;     // Reads the Atmos temp (c)
-float temperatureChamber;   // Reads chamber's temperature (C)
-float actuatorHeight;       // Reads acuator's height (mm)
+float pressureChamber;     // Reads chamber's pressure (hPa)
+float temperatureAtmos;    // Reads the Atmos temp (c)
+float temperatureChamber;  // Reads chamber's temperature (C)
+float actuatorHeight;      // Reads acuator's height (mm)
 
 float hChamber;   // Height for volume in chamber (m)
 float V;          // Volume (m^3)
@@ -92,13 +92,13 @@ float byteToHeight(int byte2) {
 
 // Function to calculate initial moles
 float moles() {
-  n=pressureChamber*V/r*temperatureChamber;
-  return(n);
+  n = pressureChamber * V / r * (temperatureChamber+273);
+  return (n);
 }
 
 // Function to calculate height in chamber
 float nextHeight() {
-  float num = n * R * temperatureChamber;
+  float num = n * R * (temperatureChamber+273);
   float den = pressureRocket * A;
   hChamber = num / den;
 
@@ -116,8 +116,8 @@ void setup() {
   pinMode(motorGate, OUTPUT);
   pinMode(valveGate, OUTPUT);
 
-  digitalWrite(motorGate, LOW);   // Turns actuator off, LED 3 on
-  digitalWrite(valveGate, HIGH);  // Opens air valve, LED 4 on
+  digitalWrite(motorGate, LOW);  // Turns actuator off, LED 3 on
+  digitalWrite(valveGate, LOW);  // Opens air valve, LED 4 on
 
   delay(1000);
 
@@ -147,28 +147,29 @@ void setup() {
     }
   }
 
+  delay(2000);
   int status;
   // Check and initialize the first Chamb80 sensor at address 0x76
   status = Atmos.begin(0x77);
-  if (!status) {
+  if (status != 1) {
     digitalWrite(LED1, HIGH);  // If the Atmos isn't detected LED 1 on
     char buff[20];
     sprintf(buff, "Atmos BP Error: %i", status);
     Serial.println(buff);
-    while (1) delay(10);
+    //while (1) delay(10);
   }
-  Atmos.setSampling(Atmos.MODE_NORMAL, Atmos.SAMPLING_X16, Atmos.SAMPLING_X16, Atmos.FILTER_X16, Atmos.STANDBY_MS_1);
+  Atmos.setSampling(Atmos.MODE_NORMAL, Atmos.SAMPLING_X16, Atmos.SAMPLING_X16, Atmos.FILTER_OFF, Atmos.STANDBY_MS_1);
 
   // Check and initialize the second Chamb80 sensor at address 0x77
   status = Chamb.begin(0x76);
-  if (!status) {
+  if (status != 1) {
     digitalWrite(LED2, HIGH);  // If the Chamb isn't detected LED 2 on
     char buff[20];
-    sprintf(buff, "Atmos BP Error: %i", status);
+    sprintf(buff, "Chamber BP Error: %i", status);
     Serial.println(buff);
-    while (1) delay(10);
+    //while (1) delay(10);
   }
-  Chamb.setSampling(Chamb.MODE_NORMAL, Chamb.SAMPLING_X16, Chamb.SAMPLING_X16, Chamb.FILTER_X16, Chamb.STANDBY_MS_1);
+  Chamb.setSampling(Chamb.MODE_NORMAL, Chamb.SAMPLING_X16, Chamb.SAMPLING_X16, Chamb.FILTER_OFF, Chamb.STANDBY_MS_1);
 
   attachInterrupt(digitalPinToInterrupt(testPin), Test, HIGH);  // Assigns test function to test pin
   previousTime = millis();
@@ -177,27 +178,27 @@ void setup() {
 
 void loop() {
   SerialCMDHandle();
-  currentTime = millis();                              
-  if (currentTime - previousTime >= timeInterval) {    
-    altitude = Atmos.readAltitude();                   
-    pressureRocket = Atmos.readPressure();             
-    pressureChamber = Chamb.readPressure();            
-    temperatureAtmos = Atmos.readTemperature();
-    temperatureChamber = Chamb.readTemperature();      
-    actuatorHeight = byteToHeight(jrk.getFeedback());  
+  currentTime = millis();
+  //if (currentTime - previousTime >= timeInterval) {
+  altitude = Atmos.readAltitude();
+  pressureRocket = Atmos.readPressure();
+  pressureChamber = Chamb.readPressure();
+  temperatureAtmos = Atmos.readTemperature();
+  temperatureChamber = Chamb.readTemperature();
+  actuatorHeight = byteToHeight(jrk.getFeedback());
 
-    unsigned long deltaTime = (currentTime - previousTime) / 100;             // Calculates time difference (seconds)
-  }
-  actualVelocity = (altitude - previousAltitude) / deltaTime;               // Calculates velocity (m/s)
-  if (altitude >= targetAltitude) {  //If over height to confirm launch
+  unsigned long deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
+  //}
+  actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
+  if (altitude >= targetAltitude) {                            //If over height to confirm launch
     timeInterval = activeTime;
-  }actualVelocity = (altitude - previousAltitude) / deltaTime;               // Calculates velocity (m/s)
-  if (experimentPrimed) {  // until conditions met don't run experiement
+  }
+  actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
+  if (experimentPrimed) {                                      // until conditions met don't run experiement
     V = (absMax - actuatorHeight) * A;
     Controller();
-  }
-  else {
-    if ((altitude >= targetAltitude) && (actualVelocity < 0)) {
+  } else {
+    if (altitude >= targetAltitude) {
       // Conditions are met, set the flag
       experimentPrimed = true;
     }
@@ -220,11 +221,12 @@ void DataSave() {
     dataFile = SD.open(currentFileName.c_str(), FILE_WRITE);
     if (dataFile) {
       char buff[255];
-      sprintf(buff,"%g , %g , %g , %g , %g , %g , %g , %g \n",currentTime,altitude,actualVelocity,pressureRocket,pressureChamber,temperatureAtmos,temperatureChamber,actuatorHeight);
+      sprintf(buff, "%g , %g , %g , %g , %g , %g , %g , %g \n", currentTime, altitude, actualVelocity, pressureRocket, pressureChamber, temperatureAtmos, temperatureChamber, actuatorHeight);
       dataFile.print(buff);  // Pressure in chamber (hPa)
-      dataFile.close();  // Close the file
+      dataFile.close();      // Close the file
     }
   }
+  return;
 }
 
 void Test() {
@@ -254,6 +256,7 @@ void Test() {
   _delay_us(2000000);
 
   sei();
+  return;
 }
 
 void clearArray(char *Array, uint8_t len) {
@@ -275,6 +278,7 @@ void SerialCMDHandle() {
     index++;
     if (index == 100) {
       index = 0;
+      Serial.println("Buffer Overflow");
       clearArray(buffer, 100);
     }
   }
@@ -301,8 +305,8 @@ void SerialCMDHandle() {
                 digitalWrite(valveGate, HIGH);
                 Serial.println("Valve On");
               }
-              break;
             }
+            break;
           case 'M':
             {  //VALVE
               char byte = buffer[3];
@@ -339,6 +343,20 @@ void SerialCMDHandle() {
               Serial.print(buff);
             }
             break;
+          case 'R':
+            {
+              Atmos.reset();
+              Chamb.reset();
+              Serial.print("Sensors Reset.");
+            }
+            break;
+          case 'O':
+            {
+              char buff[255];
+              sprintf(buff, "%g , %g , %g , %g , %g , %g , %g , %g \n", currentTime, altitude, actualVelocity, pressureRocket, pressureChamber, temperatureAtmos, temperatureChamber, actuatorHeight);
+              Serial.print(buff);  // Pressure in chamber (hPa)
+            }
+            break;
         }
       case 'A':  //Actuator
         switch (buffer[1]) {
@@ -352,16 +370,16 @@ void SerialCMDHandle() {
               jrk.setTarget(heightToByte(set));
             }
             break;
+          case 'T':
+            {
+              Autotune();
+            }
+            break;
         }
-      case 'T':
-        {
-          Autotune();
-        }
-        break;
     }
+    clearArray(buffer, 100);
+    index = 0;
   }
-  clearArray(buffer, 100);
-  index = 0;
   return;
 }
 
@@ -384,4 +402,5 @@ void Autotune() {
   char buff[50];
   sprintf(buff, "Kp %f, Ki %f, Kd %f", tuner.getKp(), tuner.getKi(), tuner.getKd());
   Serial.println(buff);
+  return;
 }

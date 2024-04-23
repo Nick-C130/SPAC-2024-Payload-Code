@@ -20,10 +20,20 @@
 #define BUILTIN_LED 13                      // Built in LED
 #define testPin 23                          // Trigger on pin 2
 
+//************** Sensor defines *************//
+#define AtmosTemp 0
+#define AtmosPress 1
+#define AtmosAlt 2
+#define ChambTemp 3
+#define ChambPress 4
+#define ChambAlt 5
+
+#define maxTempDifference 4
+
 //************** Actuator defines *************//
-#define startHeight 9                       // Start height of the actuator (mm)
+#define startHeight 14                       // Start height of the actuator (mm)
 #define maxHeight 70                        // Max height of the actuator before it reaches BMP (mm)
-#define minHeight 0                         // Min height before actuator leaves the chamber (mm)
+#define minHeight 3                         // Min height before actuator leaves the chamber (mm)
 #define absMax 90                           // Chamber max from actuator (mm)
 #define actuatorScale 40.95
 #define maxTarget maxHeight * actuatorScale
