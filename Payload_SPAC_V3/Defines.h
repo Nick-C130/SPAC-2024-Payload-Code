@@ -76,6 +76,4 @@
 #define PIDControlPeriod 30
 #define integralLimit 6000
 
-//************** PID defines *************//
-#define SITLLength 20
 #endif
