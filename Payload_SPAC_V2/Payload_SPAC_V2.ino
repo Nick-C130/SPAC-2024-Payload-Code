@@ -16,6 +16,9 @@ JRK set to wire2, Multifile, PID integration. Functions for chamber pressure
 
 V6 18/04/24
 Nick got a hold of it
+
+V7 1/05/24
+SITl setup
 */
 
 
@@ -32,6 +35,7 @@ unsigned long timeInterval = 1000;  // Initial interval between sensor readings 
 unsigned long previousTime = 0;     // Initial time variable (ms)
 bool experimentPrimed = false;      // Actuator off until true
 bool sdAv = true;                   // Is there an SD card
+bool sitl = false;
 
 unsigned long currentTime;  // Variable for time (ms)
 float previousAltitude;     // Sets variable for previous altitude (m)
@@ -92,13 +96,13 @@ float byteToHeight(int byte2) {
 
 // Function to calculate initial moles
 float moles() {
-  n = pressureChamber * V / r * (temperatureChamber+273);
+  n = pressureChamber * V / r * (temperatureChamber + 273);
   return (n);
 }
 
 // Function to calculate height in chamber
 float nextHeight() {
-  float num = n * R * (temperatureChamber+273);
+  float num = n * R * (temperatureChamber + 273);
   float den = pressureRocket * A;
   hChamber = num / den;
 
@@ -179,34 +183,48 @@ void setup() {
 void loop() {
   SerialCMDHandle();
   currentTime = millis();
-  //if (currentTime - previousTime >= timeInterval) {
-  altitude = Atmos.readAltitude();
-  pressureRocket = Atmos.readPressure();
-  pressureChamber = Chamb.readPressure();
-  temperatureAtmos = Atmos.readTemperature();
-  temperatureChamber = Chamb.readTemperature();
-  actuatorHeight = byteToHeight(jrk.getFeedback());
-
-  unsigned long deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
-  //}
-  actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
-  if (altitude >= targetAltitude) {                            //If over height to confirm launch
-    timeInterval = activeTime;
-  }
-  actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
-  if (experimentPrimed) {                                      // until conditions met don't run experiement
-    V = (absMax - actuatorHeight) * A;
-    Controller();
-  } else {
-    if (altitude >= targetAltitude) {
-      // Conditions are met, set the flag
-      experimentPrimed = true;
+  if (currentTime - previousTime >= timeInterval) {
+    if (!sitl) {
+      altitude = Atmos.readAltitude();
+      pressureRocket = Atmos.readPressure();
+      pressureChamber = Chamb.readPressure();
+      temperatureAtmos = Atmos.readTemperature();
+      temperatureChamber = Chamb.readTemperature();
+    } else {
+      Serial.print('RD');  //Send RD to python script to get it to send data
+      char incomming[SITLLength];
+      if (Serial.readBytes(incomming, SITLLength) = SITLLength) {
+        altitude = (incomming[0] << 3 * 8) | (incomming[1] << 2 * 8) | (incomming[2] << 1 * 8) | incomming[3];
+        pressureRocket = (incomming[4] << 3 * 8) | (incomming[5] << 2 * 8) | (incomming[6] << 1 * 8) | incomming[7];
+        pressureChamber = (incomming[8] << 3 * 8) | (incomming[9] << 2 * 8) | (incomming[10] << 1 * 8) | incomming[11];
+        temperatureAtmos = (incomming[12] << 3 * 8) | (incomming[13] << 2 * 8) | (incomming[14] << 1 * 8) | incomming[15];
+        temperatureChamber = (incomming[16] << 3 * 8) | (incomming[17] << 2 * 8) | (incomming[18] << 1 * 8) | incomming[19];
+      } else {
+        Serial.println("Error: No data recieved")
+      }
     }
-  }
+    actuatorHeight = byteToHeight(jrk.getFeedback());
 
-  previousTime = currentTime;  // Iterates for next loop
-  previousAltitude = altitude;
-  DataSave();  // Saves data
+    unsigned long deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
+    actualVelocity = (altitude - previousAltitude) / deltaTime;    // Calculates velocity (m/s)
+    if (altitude >= targetAltitude) {                              //If over height to confirm launch
+      timeInterval = activeTime;
+    }
+    actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
+    if (experimentPrimed) {                                      // until conditions met don't run experiement
+      V = (absMax - actuatorHeight) * A;
+      Controller();
+    } else {
+      if (altitude >= targetAltitude) {
+        // Conditions are met, set the flag
+        experimentPrimed = true;
+      }
+    }
+
+    previousTime = currentTime;  // Iterates for next loop
+    previousAltitude = altitude;
+    DataSave();  // Saves data
+  }
 }
 
 void Controller() {
@@ -374,6 +392,27 @@ void SerialCMDHandle() {
             {
               Autotune();
             }
+            break;
+        }
+      case 'T':  //Tests
+        switch (buffer[1]) {
+          case 'S':  //System Test
+            Test();
+            break;
+          case 'F':  //Full sim
+            if (sitl) {
+              sitl = false;
+            } 
+            else {
+              sitl = true;
+            }
+            Serial.print(sitl);
+            experimentPrimed = false;
+            altitude = 0;
+            pressureRocket = 0;
+            pressureChamber = 0;
+            temperatureAtmos = 0;
+            temperatureChamber = 0;
             break;
         }
     }
