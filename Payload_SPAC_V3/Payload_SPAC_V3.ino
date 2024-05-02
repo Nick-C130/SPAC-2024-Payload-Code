@@ -10,7 +10,7 @@ AP Command doesn't always update
 bool experimentPrimed = false;  // Actuator off until true
 bool dataSavePrimed = false;
 
-bool sdAv = true;               // Is there an SD card
+bool sdAv = true;  // Is there an SD card
 
 unsigned long currentTime;          // Variable for time (ms)
 unsigned long previousTime = 0;     // Initial time variable (ms)
@@ -66,6 +66,9 @@ struct PIDVals {
   int kd;
   int kde;
 };
+
+bool sitl = false;
+char cbuff[100];
 
 // Creates a new csv on each boot
 String getNextFileName(String name, String type) {
@@ -229,46 +232,61 @@ void setup() {
 void loop() {
   SerialCMDHandle();  // Allows serial inputs for commands
   currentTime = millis();
-  altitude = Atmos.readAltitude();
-  pressureAtmos = Atmos.readPressure();
-  pressureChamber = Chamb.readPressure();
-  temperatureAtmos = Atmos.readTemperature();
-  temperatureChamber = Chamb.readTemperature();
-  actuatorHeight = byteToHeight(jrk.getScaledFeedback());
-  actuatorVoltage = jrk.getVinVoltage();
-  actuatorCurrent = jrk.getCurrent();
-
-  MPU.getEvent(&a, &g, &temp);
-  accelZ = a.acceleration.z;
-
-  if ((accelZ > launchAccel) || (accelZ < -launchAccel)) { 
-    dataSavePrimed = true;
-    EventLog("Data Saving Commenced");
-  }
-
-  if (currentTime - previousTime >= timeInterval) {
-    deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
-
-    previousTime = currentTime;  // Iterates for next loop
-    previousAltitude = altitude;
-  }
-
-  actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
-
-  if (experimentPrimed) {  // until conditions met don't run experiement
-    timeInterval = activeTime;
-
-    V = (absMax - actuatorHeight) * A;
-    Controller();
+  if (!sitl) {
+    altitude = Atmos.readAltitude();
+    pressureAtmos = Atmos.readPressure();
+    pressureChamber = Chamb.readPressure();
+    temperatureAtmos = Atmos.readTemperature();
+    temperatureChamber = Chamb.readTemperature();
   } else {
-    if ((altitude >= targetAltitude) && (actualVelocity < targetVelocity)) {
-      EventLog("Experiment Primed");
-      experimentPrimed = true;
-      n = moles();
+    sprintf(cbuff,"RD %f%f\n",Chamb.readPressure(),Chamb.readTemperature());
+    Serial.print(cbuff);  //Send RD to python script to get it to send data
+    char incomming[SITLLength];
+    if (Serial.readBytes(incomming, SITLLength) == SITLLength) {
+      altitude = ((incomming[0] << 3 * 8) | (incomming[1] << 2 * 8) | (incomming[2] << 1 * 8) | incomming[3])/1000;
+      pressureAtmos = ((incomming[4] << 3 * 8) | (incomming[5] << 2 * 8) | (incomming[6] << 1 * 8) | incomming[7])/1000;
+      pressureChamber = ((incomming[8] << 3 * 8) | (incomming[9] << 2 * 8) | (incomming[10] << 1 * 8) | incomming[11])/1000;
+      temperatureAtmos = ((incomming[12] << 3 * 8) | (incomming[13] << 2 * 8) | (incomming[14] << 1 * 8) | incomming[15])/1000;
+      temperatureChamber = ((incomming[16] << 3 * 8) | (incomming[17] << 2 * 8) | (incomming[18] << 1 * 8) | incomming[19])/1000;
+    } else {
+      Serial.print("Error: No data recieved\n");
     }
-  }
+    actuatorHeight = byteToHeight(jrk.getScaledFeedback());
+    actuatorVoltage = jrk.getVinVoltage();
+    actuatorCurrent = jrk.getCurrent();
 
-  DataSave();  // Saves data
+    MPU.getEvent(&a, &g, &temp);
+    accelZ = a.acceleration.z;
+
+    if ((accelZ > launchAccel) || (accelZ < -launchAccel)) {
+      dataSavePrimed = true;
+      EventLog("Data Saving Commenced");
+    }
+
+    if (currentTime - previousTime >= timeInterval) {
+      deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
+
+      previousTime = currentTime;  // Iterates for next loop
+      previousAltitude = altitude;
+    }
+
+    actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
+
+    if (experimentPrimed) {  // until conditions met don't run experiement
+      timeInterval = activeTime;
+
+      V = (absMax - actuatorHeight) * A;
+      Controller();
+    } else {
+      if ((altitude >= targetAltitude) && (actualVelocity < targetVelocity)) {
+        EventLog("Experiment Primed");
+        experimentPrimed = true;
+        n = moles();
+      }
+    }
+
+    DataSave();  // Saves data
+  }
 }
 
 void Controller() {
@@ -550,14 +568,12 @@ void SerialCMDHandle() {
             break;
           case 'P':
             {  //PID values
-              char cbuff[100];
               sprintf(cbuff, "KP: %i KPE: %i KI: %i KIE: %i KD: %i KDE: %i\n", jrk.getProportionalMultiplier(), jrk.getProportionalExponent(), jrk.getIntegralMultiplier(), jrk.getIntegralExponent(), jrk.getDerivativeMultiplier(), jrk.getDerivativeExponent());
               Serial.print(cbuff);
             }
             break;
           case 'V':
             {  // Velocity
-              char cbuff[100];
               sprintf(cbuff, "Altitude: %.2f m| Velocity: %.2f m/s \n", altitude, actualVelocity);
               Serial.print(cbuff);
             }
@@ -590,10 +606,29 @@ void SerialCMDHandle() {
                 EEPROM.get(0, send);
               }
               sendPID(send);
-              char cbuff[100];
               sprintf(cbuff, "KP: %i KPE: %i KI: %i KIE: %i KD: %i KDE: %i\n", jrk.getProportionalMultiplier(), jrk.getProportionalExponent(), jrk.getIntegralMultiplier(), jrk.getIntegralExponent(), jrk.getDerivativeMultiplier(), jrk.getDerivativeExponent());
               Serial.print(cbuff);
             }
+            break;
+        }
+      case 'T':  //Tests
+        switch (buffer[1]) {
+          case 'S':  //System Test
+            Test();
+            break;
+          case 'F':  //Full sim
+            if (sitl) {
+              sitl = false;
+            } else {
+              sitl = true;
+            }
+            Serial.print(sitl);
+            experimentPrimed = false;
+            altitude = 0;
+            pressureAtmos = 0;
+            pressureChamber = 0;
+            temperatureAtmos = 0;
+            temperatureChamber = 0;
             break;
         }
     }

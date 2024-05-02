@@ -45,7 +45,7 @@
 // #define GyroY
 // #define GyroZ
 
-#define launchAccel 0
+#define launchAccel 20
 
 //************** Actuator defines *************//
 #define startHeight 14       // Start height of the actuator (mm)
@@ -75,5 +75,9 @@
 #define derivativeExpo 0
 #define PIDControlPeriod 30
 #define integralLimit 6000
+
+
+//************** STIL defines *************//
+#define SITLLength 20
 
 #endif

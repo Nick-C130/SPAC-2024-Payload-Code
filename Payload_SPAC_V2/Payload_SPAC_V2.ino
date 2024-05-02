@@ -1,33 +1,3 @@
-/* 
-V1 14/02/24
-BMP sensors, SD card, and Startup trigger setup
-
-V2 17/02/24
-Start conditions, Logic statements
-
-V3 19/02/24
-Data saving, Test script
-
-V4 23/02/24
-Height to Byte function, Byte to Height function, start, min, max height settings
-
-V5 13/04/24
-JRK set to wire2, Multifile, PID integration. Functions for chamber pressure
-
-V6 18/04/24
-Nick got a hold of it
-
-V7 1/05/24
-SITl setup
-*/
-
-
-/*
-To do
-Test SD card
-Erranious value detection
-*/
-
 #include "Defines.h"
 #include "JrkG2.h"
 
@@ -191,16 +161,16 @@ void loop() {
       temperatureAtmos = Atmos.readTemperature();
       temperatureChamber = Chamb.readTemperature();
     } else {
-      Serial.print('RD');  //Send RD to python script to get it to send data
+      Serial.print("RD");  //Send RD to python script to get it to send data
       char incomming[SITLLength];
-      if (Serial.readBytes(incomming, SITLLength) = SITLLength) {
+      if (Serial.readBytes(incomming, SITLLength) == SITLLength) {
         altitude = (incomming[0] << 3 * 8) | (incomming[1] << 2 * 8) | (incomming[2] << 1 * 8) | incomming[3];
         pressureRocket = (incomming[4] << 3 * 8) | (incomming[5] << 2 * 8) | (incomming[6] << 1 * 8) | incomming[7];
         pressureChamber = (incomming[8] << 3 * 8) | (incomming[9] << 2 * 8) | (incomming[10] << 1 * 8) | incomming[11];
         temperatureAtmos = (incomming[12] << 3 * 8) | (incomming[13] << 2 * 8) | (incomming[14] << 1 * 8) | incomming[15];
         temperatureChamber = (incomming[16] << 3 * 8) | (incomming[17] << 2 * 8) | (incomming[18] << 1 * 8) | incomming[19];
       } else {
-        Serial.println("Error: No data recieved")
+        Serial.println("Error: No data recieved");
       }
     }
     actuatorHeight = byteToHeight(jrk.getFeedback());
