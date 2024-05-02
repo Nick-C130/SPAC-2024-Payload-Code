@@ -7,7 +7,7 @@ StartMessage = b'TF\n\r'
 
 burnAccel = 200
 burnTime = 2.4
-gravAccel = -150
+gravAccel = -45
 drougeSpeed = -26
 mainSpeed = -10
 mainAlt = 1000
