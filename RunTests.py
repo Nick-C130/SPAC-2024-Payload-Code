@@ -10,7 +10,7 @@ burnTime = 2.4
 gravAccel = -45
 drougeSpeed = -26
 mainSpeed = -10
-mainAlt = 1000
+mainAlt = 330
 
 vel = 0
 alt = 0
@@ -123,7 +123,6 @@ with serial.Serial(selected_port,115200, timeout=timeout) as ser:
                 if(not(expWait)):
                     pressChambReading = float(toStr(message[3:8]))
                     tempChambReading = float(toStr(message[8:13]))
-                    altReading = float(12.3)
                     pressAtmosReading = float(pressChambReading)
                     tempAtmosReading = float(tempChambReading)
                     
