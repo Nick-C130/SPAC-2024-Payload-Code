@@ -1,0 +1,41 @@
+#,Reference,Qty,Value,Footprint,Purchase Status
+1,"C1, C2",2,0.1nF,Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder,MECHA LAB
+2,"C3, C6",2,C,Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder,MECHA LAB
+3,"C4, C5",2,0.1uF,Capacitor_SMD:C_1206_3216Metric,MECHA LAB
+4,COMMISIONING_PWR1,1,BATTERIES IN,Connector_Molex:Molex_Mini-Fit_Jr_5566-02A_2x01_P4.20mm_Vertical,MECHA LAB
+5,D1,1,BMP1 FAULT,Diode_SMD:D_1206_3216Metric_Pad1.42x1.75mm_HandSolder,MECHA LAB
+6,D2,1,BMP2 FAULT,Diode_SMD:D_1206_3216Metric_Pad1.42x1.75mm_HandSolder,MECHA LAB
+7,D3,1,ACTUATOR ON,Diode_SMD:D_1206_3216Metric_Pad1.42x1.75mm_HandSolder,MECHA LAB
+8,D4,1,VALVE OPEN,Diode_SMD:D_1206_3216Metric_Pad1.42x1.75mm_HandSolder,MECHA LAB
+9,D5,1,D,Diode_SMD:D_1206_3216Metric_Pad1.42x1.75mm_HandSolder,MECHA LAB
+10,D6,1,TEST,Diode_SMD:D_1206_3216Metric_Pad1.42x1.75mm_HandSolder,MECHA LAB
+11,D7,1,12V_RAW,LED_SMD:LED_1206_3216Metric,MECHA LAB
+12,D8,1,TWGMC-SS34,Diode_SMD:D_SMA_Handsoldering,MECHA LAB
+13,D9,1,12V_PROT,LED_SMD:LED_1206_3216Metric,MECHA LAB
+14,D10,1,5V,LED_SMD:LED_1206_3216Metric,MECHA LAB
+15,F1,1,SMDFuse,NU Teams Footprints:Fuseholder_Littelfuse_Nano2_154x,MECHA LAB
+16,IC1,1,BMP390,Package_LGA:ST_HLGA-10_2x2mm_P0.5mm_LayoutBorder3x2y,Digikey
+17,J1,1,VALVE,Connector_Molex:Molex_Micro-Fit_3.0_43045-0212_2x01_P3.00mm_Vertical,MECHA LAB
+18,J2,1,FEEDBACK,Connector_Molex:Molex_Mini-Fit_Jr_5566-04A_2x02_P4.20mm_Vertical,MECHA LAB
+19,J3,1,ACTUATOR POWER,Connector_Molex:Molex_Mini-Fit_Jr_5566-02A_2x01_P4.20mm_Vertical,MECHA LAB
+20,R1,1,1K,Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder,MECHA LAB
+21,"R2, R3",2,4.7k,Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder,MECHA LAB
+22,R4,1,1k,Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder,MECHA LAB
+23,R5,1,1.5k,Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder,MECHA LAB
+24,"R6, R7",2,1K,Resistor_SMD:R_1206_3216Metric,MECHA LAB
+25,R8,1,500,Resistor_SMD:R_1206_3216Metric,MECHA LAB
+26,SJ1,1,SOLDERJUMPER,Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,N/A
+27,SJ2,1,TEST,TestPoint:TestPoint_2Pads_Pitch2.54mm_Drill0.8mm,N/A
+28,TP2,1,3V,TestPoint:TestPoint_Loop_D1.80mm_Drill1.0mm_Beaded,N/A
+29,TP3,1,GND,TestPoint:TestPoint_Loop_D1.80mm_Drill1.0mm_Beaded,N/A
+30,TP4,1,12V_RAW,TestPoint:TestPoint_Loop_D1.80mm_Drill1.0mm_Beaded,N/A
+31,TP5,1,12V_PROT,TestPoint:TestPoint_Loop_D1.80mm_Drill1.0mm_Beaded,N/A
+32,TP6,1,5V,TestPoint:TestPoint_Loop_D1.80mm_Drill1.0mm_Beaded,N/A
+33,U1,1,VALVE MOSFET,Package_TO_SOT_THT:TO-220-3_Vertical,Digikey
+34,U2,1,Teensy4.1,teensy:Teensy41,Ordered
+35,U3,1,Branding_Block_Rocketry,NU Teams Footprints:BRANDING_ROCKETRY,N/A
+36,U4,1,BMP280_2,NU Teams Footprints:microfit-2x02,MECHA LAB
+37,U5,1,Motor_Controller,SPAC:JRK21V3,Ordered
+38,U6,1,BMP280_Backup,Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical,N/A
+39,U7,1,LM7805_TO220,Package_TO_SOT_THT:TO-220-3_Vertical,MECHA LAB
+40,U8,1,ACTUATOR MOSFET,Package_TO_SOT_THT:TO-220-3_Vertical,Digikey

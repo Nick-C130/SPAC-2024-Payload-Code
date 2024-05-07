@@ -10,7 +10,7 @@ AP Command doesn't always update
 bool experimentPrimed = false;  // Actuator off until true
 bool dataSavePrimed = false;
 
-bool sdAv = true;               // Is there an SD card
+bool sdAv = true;  // Is there an SD card
 
 unsigned long currentTime;          // Variable for time (ms)
 unsigned long previousTime = 0;     // Initial time variable (ms)
@@ -23,6 +23,7 @@ float altitude = 0;        // Reads altitude (check sensor) (m)
 float previousAltitude;    // Sets variable for previous altitude (m)
 float pressureAtmos;       // Reads chamber's pressure (Pa)
 float pressureChamber;     // Reads chamber's pressure (Pa)
+float pressureDifference;  // Difference between Atmos and Chamber (Pa)
 float temperatureAtmos;    // Reads the Atmos temp (C)
 float temperatureChamber;  // Reads chamber's temperature (C)
 
@@ -99,14 +100,14 @@ float byteToHeight(int byte2) {
 
 // Function to calculate initial moles
 float moles() {
-  n = pressureChamber * V / r * (temperatureChamber + 273.15);
+  n = Chamb.readPressure() * V / r * (Chamb.readTemperature() + 273.15);
   return (n);
 }
 
 // Function to calculate height in chamber
 float nextHeight() {
-  float num = n * R * (temperatureChamber + 273.15);
-  float den = pressureAtmos * A;
+  float num = n * R * (Chamb.readTemperature() + 273.15);
+  float den = Atmos.readPressure() * Area;
   hChamber = num / den;
   hPiston = absMax - hChamber;
 
@@ -232,6 +233,7 @@ void loop() {
   altitude = Atmos.readAltitude();
   pressureAtmos = Atmos.readPressure();
   pressureChamber = Chamb.readPressure();
+  pressureDifference = pressureAtmos - pressureChamber;
   temperatureAtmos = Atmos.readTemperature();
   temperatureChamber = Chamb.readTemperature();
   actuatorHeight = byteToHeight(jrk.getScaledFeedback());
@@ -241,7 +243,7 @@ void loop() {
   MPU.getEvent(&a, &g, &temp);
   accelZ = a.acceleration.z;
 
-  if ((accelZ > launchAccel) || (accelZ < -launchAccel)) { 
+  if ((accelZ > launchAccel) || (accelZ < -launchAccel)) {
     dataSavePrimed = true;
     EventLog("Data Saving Commenced");
   }
@@ -258,7 +260,7 @@ void loop() {
   if (experimentPrimed) {  // until conditions met don't run experiement
     timeInterval = activeTime;
 
-    V = (absMax - actuatorHeight) * A;
+    V = (absMax - actuatorHeight) * Area;
     Controller();
   } else {
     if ((altitude >= targetAltitude) && (actualVelocity < targetVelocity)) {
@@ -562,6 +564,12 @@ void SerialCMDHandle() {
               Serial.print(cbuff);
             }
             break;
+          case 'E':
+            {
+              char cbuff[100];
+              sprintf(cbuff, "Experiment Status: %i | Volume: %.2f m^3| Pressure Difference %.2f Pa \n", experimentPrimed, V, pressureDifference);
+              Serial.print(cbuff);
+            }
         }
       case 'A':  //Actuator
         switch (buffer[1]) {
@@ -593,6 +601,23 @@ void SerialCMDHandle() {
               char cbuff[100];
               sprintf(cbuff, "KP: %i KPE: %i KI: %i KIE: %i KD: %i KDE: %i\n", jrk.getProportionalMultiplier(), jrk.getProportionalExponent(), jrk.getIntegralMultiplier(), jrk.getIntegralExponent(), jrk.getDerivativeMultiplier(), jrk.getDerivativeExponent());
               Serial.print(cbuff);
+            }
+            break;
+          case 'X':
+            {
+              char byte = buffer[3];
+              if (byte == '0') {
+                experimentPrimed = false;
+              } else if (byte == '1') {
+                experimentPrimed = true;
+              }
+              char cbuff[100];
+              sprintf(cbuff, "Experiment status: %i\n", experimentPrimed);
+              Serial.print(cbuff);
+            }
+          case 'B':
+            {  //Test
+              Test();
             }
             break;
         }

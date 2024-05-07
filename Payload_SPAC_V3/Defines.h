@@ -63,7 +63,7 @@
 #define targetVelocity 0       // Velocity of the rocket's decent
 #define rocketLaunchSpike      // Condition for data saving to begin
 #define r 0.02                 // Pressure chamber radius (m)
-#define A M_PI* pow(r, 2)      // Area (m^2)
+#define Area M_PI* pow(r, 2)      // Area (m^2)
 
 //************** PID defines *************//
 #define tuneVal 40

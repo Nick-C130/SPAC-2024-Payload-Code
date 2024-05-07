@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 0)
+  (lib (name "Rocketry_Payload_Main-eagle-import")(type "KiCad")(uri "${KIPRJMOD}/Rocketry_Payload_Main-eagle-import.kicad_sym")(options "")(descr ""))
+)
