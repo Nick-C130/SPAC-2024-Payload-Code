@@ -43,7 +43,7 @@ float actuatorCurrent;  // Reads actuator's current draw (mA)
 
 float hChamber;   // Height for volume in chamber (m)
 float hPiston;    // Height the piston needs to be to achieve hChamber
-float V;          // Volume (m^3)
+float Volume;     // Volume (m^3)
 int n;            // Moles
 float R = 8.314;  // Ideal gas constant  (J/K/mol)
 float T;          // Temperature (K)
@@ -100,7 +100,7 @@ float byteToHeight(int byte2) {
 
 // Function to calculate initial moles
 float moles() {
-  n = Chamb.readPressure() * V / r * (Chamb.readTemperature() + 273.15);
+  n = pressureChamber * Volume / r * (Chamb.readTemperature() + 273.15);
   return (n);
 }
 
@@ -225,6 +225,7 @@ void setup() {
   previousAltitude = Atmos.readAltitude();
 
   EventLog("Setup Completed");
+  Test();
 }
 
 void loop() {
@@ -239,6 +240,7 @@ void loop() {
   actuatorHeight = byteToHeight(jrk.getScaledFeedback());
   actuatorVoltage = jrk.getVinVoltage();
   actuatorCurrent = jrk.getCurrent();
+  Volume = (absMax - actuatorHeight) * Area;
 
   MPU.getEvent(&a, &g, &temp);
   accelZ = a.acceleration.z;
@@ -260,7 +262,6 @@ void loop() {
   if (experimentPrimed) {  // until conditions met don't run experiement
     timeInterval = activeTime;
 
-    V = (absMax - actuatorHeight) * Area;
     Controller();
   } else {
     if ((altitude >= targetAltitude) && (actualVelocity < targetVelocity)) {
@@ -567,7 +568,7 @@ void SerialCMDHandle() {
           case 'E':
             {
               char cbuff[100];
-              sprintf(cbuff, "Experiment Status: %i | Volume: %.2f m^3| Pressure Difference %.2f Pa \n", experimentPrimed, V, pressureDifference);
+              sprintf(cbuff, "Experiment Status: %i | Volume: %.2f m^3| Pressure Difference %.2f Pa \n", experimentPrimed, Volume, pressureDifference);
               Serial.print(cbuff);
             }
         }
