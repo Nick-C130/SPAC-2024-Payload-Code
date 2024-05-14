@@ -611,6 +611,7 @@ void SerialCMDHandle() {
             }
             break;
         }
+      break;
       case 'T':  //Tests
         switch (buffer[1]) {
           case 'S':  //System Test
