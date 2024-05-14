@@ -491,6 +491,7 @@ void SerialCMDHandle() {
               break;
             }
         }
+        break;
       case 'S':  //Sensors
         switch (buffer[1]) {
           case 'A':
@@ -579,6 +580,7 @@ void SerialCMDHandle() {
             }
             break;
         }
+        break;
       case 'A':  //Actuator
         switch (buffer[1]) {
           case 'S':
