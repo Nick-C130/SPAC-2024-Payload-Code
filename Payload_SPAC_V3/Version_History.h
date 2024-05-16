@@ -24,4 +24,7 @@ Fixed velocity, repaired start conditions
 V8 28/04/24
 MPU6050 setup and integration
 
+V9 16/05/24
+Branch merge, SITL, updated experiment
+
 */

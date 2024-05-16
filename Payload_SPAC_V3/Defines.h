@@ -19,6 +19,7 @@
 #define LED1 0          // Status LED1
 #define LED2 1          // Status LED2
 #define LED3 4          // Status LED3
+#define LED4 5          // Status LED4
 #define motorGate 2     // Motor gate pin
 #define valveGate 3     // Valve gate pin
 #define BUILTIN_LED 13  // Built in LED
@@ -45,7 +46,6 @@
 // #define GyroY
 // #define GyroZ
 
-#define launchAccel 20
 
 //************** Actuator defines *************//
 #define startHeight 14       // Start height of the actuator (mm)
@@ -61,9 +61,12 @@
 #define standbyTime 10000
 #define targetAltitude 2500.0  // Extra condition to run main script. Underestimate of expected apogee (m)
 #define targetVelocity 0       // Velocity of the rocket's decent
-#define rocketLaunchSpike      // Condition for data saving to begin
-#define r 0.02                 // Pressure chamber radius (m)
-#define A M_PI* pow(r, 2)      // Area (m^2)
+#define groundAltitude 400     // Velocity to be under to end experiment
+#define groundVelocity 0.05    // Velocity to end experiment
+#define rocketLaunchSpike 2    // Condition for data saving to begin
+#define launchAccel 20
+#define radius 0.02                // Pressure chamber radius (m)
+#define area M_PI* pow(radius, 2)  // Area (m^2)
 
 //************** PID defines *************//
 #define tuneVal 40
