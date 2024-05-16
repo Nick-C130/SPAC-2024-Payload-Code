@@ -8,9 +8,7 @@ AP Command doesn't always update
 #include "JrkG2.h"
 
 bool experimentPrimed = false;  // Actuator off until true
-bool dataSavePrimed = false;
-
-bool sdAv = true;  // Is there an SD card
+bool dataSavePrimed = false;    // Data doesn't save until launch
 
 unsigned long currentTime;          // Variable for time (ms)
 unsigned long previousTime = 0;     // Initial time variable (ms)
@@ -21,6 +19,7 @@ float actualVelocity;  // Velocity as calculated by barometer (m/s)
 
 float altitude = 0;        // Reads altitude (check sensor) (m)
 float previousAltitude;    // Sets variable for previous altitude (m)
+float deltaAltitude;       // Change in height for Velocity (m)
 float pressureAtmos;       // Reads chamber's pressure (Pa)
 float pressureChamber;     // Reads chamber's pressure (Pa)
 float pressureDifference;  // Difference between Atmos and Chamber (Pa)
@@ -53,6 +52,7 @@ Adafruit_BMP280 Atmos;  // First BMP280 sensor at address 0x76
 Adafruit_BMP280 Chamb;  // Second BMP280 sensor at address 0x77
 Adafruit_MPU6050 MPU;   // IMU sensor at address 0x68
 
+bool sdAv = true;                       // Is there an SD card
 const int chipSelect = BUILTIN_SDCARD;  // SD card CS pin
 File dataFile;                          // Sets a data file
 String currentDataFileName;             // File for Data
@@ -123,6 +123,7 @@ void setup() {
   pinMode(LED1, OUTPUT);
   pinMode(LED2, OUTPUT);
   pinMode(LED3, OUTPUT);
+  pinMode(LED4, OUTPUT);
   pinMode(motorGate, OUTPUT);
   pinMode(valveGate, OUTPUT);
 
@@ -158,6 +159,7 @@ void setup() {
       dataFile.close();
     } else {
       digitalWrite(BUILTIN_LED, HIGH);
+      digitalWrite(LED4, HIGH);
     }
   }
 
@@ -180,6 +182,7 @@ void setup() {
       dataFile.close();
     } else {
       digitalWrite(BUILTIN_LED, HIGH);
+      digitalWrite(LED4, HIGH);
     }
   }
 
@@ -189,6 +192,7 @@ void setup() {
   status = Atmos.begin(0x77);
   if (status != 1) {
     digitalWrite(LED1, HIGH);  // If the Atmos isn't detected LED 1 on
+    digitalWrite(LED4, HIGH);
     char buff[20];
     sprintf(buff, "Atmos BP Error: %i", status);
     Serial.println(buff);
@@ -200,6 +204,7 @@ void setup() {
   status = Chamb.begin(0x76);
   if (status != 1) {
     digitalWrite(LED2, HIGH);  // If the Chamb isn't detected LED 2 on
+    digitalWrite(LED4, HIGH);
     char buff[20];
     sprintf(buff, "Chamber BP Error: %i", status);
     Serial.println(buff);
@@ -210,6 +215,7 @@ void setup() {
   status = MPU.begin(0x68);
   if (status != 1) {
     digitalWrite(LED3, HIGH);  // If the MPU isn't detected LED 3 on
+    digitalWrite(LED4, HIGH);
     char buff[20];
     sprintf(buff, "MPU Error: %i", status);
     Serial.println(buff);
@@ -225,7 +231,7 @@ void setup() {
   previousAltitude = Atmos.readAltitude();
 
   EventLog("Setup Completed");
-  Test();
+  //Test();
 }
 
 void loop() {
@@ -252,17 +258,23 @@ void loop() {
 
   if (currentTime - previousTime >= timeInterval) {
     deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
+    deltaAltitude = altitude - previousAltitude;     // Calculates difference in height from last loop (m)
 
     previousTime = currentTime;  // Iterates for next loop
     previousAltitude = altitude;
   }
 
-  actualVelocity = (altitude - previousAltitude) / deltaTime;  // Calculates velocity (m/s)
+  actualVelocity = deltaAltitude / deltaTime;  // Calculates velocity (m/s)
 
   if (experimentPrimed) {  // until conditions met don't run experiement
     timeInterval = activeTime;
 
     Controller();
+
+    if ((altitude <= groundAltitude) && (actualVelocity < groundVelocity)) {
+      experimentPrimed = false;
+      EventLog("Experiment Ended");
+    }
   } else {
     if ((altitude >= targetAltitude) && (actualVelocity < targetVelocity)) {
       EventLog("Experiment Primed");
@@ -318,8 +330,9 @@ void Test() {
   digitalWrite(LED1, HIGH);         // LED 1 on
   digitalWrite(LED2, HIGH);         // LED 2 on
   digitalWrite(LED3, HIGH);         // LED 3 on
-  digitalWrite(motorGate, HIGH);    // Turns actuator on, LED 3 on
-  digitalWrite(valveGate, HIGH);    // Closes valve, LED 4 on
+  digitalWrite(LED4, HIGH);
+  digitalWrite(motorGate, HIGH);  // Turns actuator on, LED 3 on
+  digitalWrite(valveGate, HIGH);  // Closes valve, LED 4 on
 
   // Tests actuator
   jrk.setTarget(heightToByte(100));
@@ -334,6 +347,7 @@ void Test() {
   digitalWrite(LED1, LOW);
   digitalWrite(LED2, LOW);
   digitalWrite(LED3, LOW);
+  digitalWrite(LED4, LOW);
   digitalWrite(valveGate, LOW);
   digitalWrite(motorGate, LOW);
 
