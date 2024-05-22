@@ -5,7 +5,7 @@
 //************** Sensors *************//
 // SA - Atmospheric pressure sensor data
 // SC - Chamber pressure sensor data
-// SM - Motor controller data
+// SM - Motor controller data - POS VOLTAGE AND CURRENT
 // SI - MPU data
 // SP - Gets PID values
 // SO - Other Data (inlcuding some of the above)

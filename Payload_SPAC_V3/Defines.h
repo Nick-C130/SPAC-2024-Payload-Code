@@ -11,6 +11,7 @@
 #include <util/delay.h>
 #include <pidautotuner.h>  //https://github.com/jackw01/arduino-pid-autotuner
 #include <EEPROM.h>
+#include <PID_v1.h>
 
 //************** Alias defines *************//
 #define AccWire Wire2  // Changes Wire for JRK to Wire2
@@ -55,6 +56,9 @@
 #define actuatorScale 40.95  // Scaling factor for feedback calcs
 #define maxTarget maxHeight* actuatorScale
 #define minTarget minHeight* actuatorScale
+#define EXPP 2
+#define EXPI 0.05
+#define EXPD 0.1
 
 //************** Experiment defines *************//
 #define activeTime 10

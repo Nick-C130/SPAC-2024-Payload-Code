@@ -1,6 +1,9 @@
 import serial
 import time
 import serial.tools.list_ports
+import csv
+import time
+from datetime import datetime
 
 timeout = 5
 StartMessage = b'TF\n\r'
@@ -98,10 +101,18 @@ def altitude_to_pressure(altitude):
     M = 0.02896  # Molar mass of Earth's air in kg/mol
     R = 8.31447  # Universal gas constant in J/(mol·K)
 
-    P = P0 * (1 - (L * altitude) / T0) ** ((g * M) / (R * L))
+    P = (P0 * (1 - (L * altitude) / T0) ** ((g * M) / (R * L)))*10
     return float(P)
 
 selected_port = select_com_port()
+
+def saveData(d1,d2,d3,d4,d5,d6):
+    values = [d1,d2,d3,d4,d5,d6]
+    with open('output.csv', 'a', newline='') as file:
+        writer = csv.writer(file)
+        now = datetime.now()
+        time_string = now.strftime("%Y-%m-%d %H:%M:%S")
+        writer.writerow([time_string] + values)
 
 with serial.Serial(selected_port,115200, timeout=timeout) as ser:
     ser.reset_input_buffer()
@@ -154,6 +165,7 @@ with serial.Serial(selected_port,115200, timeout=timeout) as ser:
 
                     lastTime = time.time()
                     print("Velocity: {} Altitude: {} Pressure: {} Chamber pressure: {} Fake chamber Pressure: {} Mode: {}".format(vel,alt,pressAtmos,pressChambReading,pressChamb,mode))
+                    saveData(vel,alt,pressAtmos,pressChambReading,pressChamb,mode)
                     data = [int(alt*1000),int(pressAtmos*1000),int(pressChamb*1000),int(tempAtmosReading*1000),int(tempChambReading*1000)]
                     send_message(ser,data)
 
