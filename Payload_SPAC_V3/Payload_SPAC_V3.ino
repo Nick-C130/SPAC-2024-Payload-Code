@@ -48,11 +48,12 @@ float Volume;     // Volume (m^3)
 int n;            // Moles
 float R = 8.314;  // Ideal gas constant  (J/K/mol)
 float T;          // Temperature (K)
+float V;
 
 double pressureInput;
 double pressureAtmosInput;
 
-PID ActuatorPID(&pressureInput, &setHeight, &pressureAtmosInput, double(EXPP), EXPI, EXPD, DIRECT);
+PID ActuatorPID(&pressureInput, &setHeight, &pressureAtmosInput, EXPP, EXPI, EXPD, DIRECT);
 
 JrkG2I2C jrk;           // Motor Controller
 Adafruit_BMP280 Atmos;  // First BMP280 sensor at address 0x76
@@ -106,22 +107,6 @@ int heightToByte(float mm1) {
 float byteToHeight(int byte2) {
   int mm2 = byte2 / actuatorScale;
   return mm2;
-}
-
-// Function to calculate initial moles
-float moles() {
-  n = pressureChamber * Volume / radius * (temperatureChamber + 273.15);
-  return (n);
-}
-
-// Function to calculate height in chamber
-float nextHeight() {
-  float num = n * R * (temperatureChamber + 273.15);
-  float den = pressureAtmos * area;
-  hChamber = num / den;
-  hPiston = absMax - hChamber;
-
-  return hPiston;
 }
 
 void setup() {
@@ -179,7 +164,8 @@ void setup() {
     MPU.getEvent(&a, &g, &temp);
     if (dataFile) {
       char buff[255];
-      sprintf(buff, "%xl , %.2f , %.2f , %f , %f , %.2f, %.2f , %.2f , %.1f ,  \n", Atmos.readAltitude(), Atmos.readPressure(), Chamb.readPressure(), Atmos.readTemperature(), Chamb.readTemperature(), a.acceleration.z, byteToHeight(jrk.getScaledFeedback()), jrk.getVinVoltage(), jrk.getCurrent());
+      sprintf(buff, "%.2f , %.2f , %.2f , %f , %f , %.2f, %.2f , %i , %.i\n",
+              Atmos.readAltitude(), Atmos.readPressure(), Chamb.readPressure(), Atmos.readTemperature(), Chamb.readTemperature(), a.acceleration.z, byteToHeight(jrk.getScaledFeedback()), jrk.getVinVoltage(), jrk.getCurrent());
       dataFile.print(buff);  // Pressure in chamber (hPa)
       dataFile.close();      // Close the file
     }
@@ -241,6 +227,9 @@ void setup() {
   previousTime = millis();
   previousAltitude = Atmos.readAltitude();
 
+  ActuatorPID.SetMode(AUTOMATIC);
+  ActuatorPID.SetOutputLimits(1500, 9000);
+
   EventLog("Setup Completed");
 }
 
@@ -254,6 +243,8 @@ void loop() {
     pressureDifference = pressureAtmos - pressureChamber;
     temperatureAtmos = Atmos.readTemperature();
     temperatureChamber = Chamb.readTemperature();
+    MPU.getEvent(&a, &g, &temp);
+    accelZ = a.acceleration.z;
   } else {
     sprintf(cbuff, "RD %f%f\n", Chamb.readPressure(), Chamb.readTemperature());
     Serial.print(cbuff);  //Send RD to python script to get it to send data
@@ -264,61 +255,49 @@ void loop() {
       pressureChamber = ((incomming[8] << 3 * 8) | (incomming[9] << 2 * 8) | (incomming[10] << 1 * 8) | incomming[11]) / 1000;
       temperatureAtmos = ((incomming[12] << 3 * 8) | (incomming[13] << 2 * 8) | (incomming[14] << 1 * 8) | incomming[15]) / 1000;
       temperatureChamber = ((incomming[16] << 3 * 8) | (incomming[17] << 2 * 8) | (incomming[18] << 1 * 8) | incomming[19]) / 1000;
+      accelZ = ((incomming[20] << 3 * 8) | (incomming[21] << 2 * 8) | (incomming[22] << 1 * 8) | incomming[23]) / 1000;
     } else {
       Serial.print("Error: No data recieved\n");
     }
-    actuatorHeight = byteToHeight(jrk.getScaledFeedback());
-    actuatorVoltage = jrk.getVinVoltage();
-    actuatorCurrent = jrk.getCurrent();
-    Volume = (absMax - actuatorHeight) * area;
+  }
+  actuatorHeight = byteToHeight(jrk.getScaledFeedback());
+  actuatorVoltage = jrk.getVinVoltage();
+  actuatorCurrent = jrk.getCurrent();
 
-    MPU.getEvent(&a, &g, &temp);
-    accelZ = a.acceleration.z;
+  if ((accelZ > launchAccel) || (accelZ < -launchAccel)) {
+    dataSavePrimed = true;
+    EventLog("Launch Detected - Data Saving Commenced");
+  }
 
-    if ((accelZ > launchAccel) || (accelZ < -launchAccel)) {
-      dataSavePrimed = true;
-      EventLog("Launch Detected - Data Saving Commenced");
-    }
-
-    if (currentTime - previousTime >= timeInterval) {
-      deltaTime = (currentTime - previousTime) / 100;  // Calculates time difference (seconds)
-      deltaAltitude = altitude - previousAltitude;
-
-      previousTime = currentTime;  // Iterates for next loop
-      previousAltitude = altitude;
-    }
+  if (currentTime - previousTime >= timeInterval) {
+    deltaTime = (currentTime - previousTime) / 1000;  // Calculates time difference (seconds)
+    deltaAltitude = altitude - previousAltitude;
+    previousTime = currentTime;  // Iterates for next loop
+    previousAltitude = altitude;
 
     actualVelocity = deltaAltitude / deltaTime;  // Calculates velocity (m/s)
-
-    if (experimentPrimed) {  // until conditions met don't run experiement
+    if (experimentPrimed) {                      // until conditions met don't run experiement
       timeInterval = activeTime;
 
-      V = (absMax - actuatorHeight) * A;
+      //V = (absMax - actuatorHeight) * A;
       //Controller();
-      pressureInput = double(pressureChamber*100);
-      pressureAtmosInput = double(pressureAtmos*100);
-      ActuatorPID.Compute();
-      jrk.setTarget(heightToByte(setHeight/100));
+      //pressureAtmosInput = double(pressureAtmos);
     } else {
       if ((altitude >= targetAltitude) && (actualVelocity < targetVelocity)) {
-        ActuatorPID.SetMode(AUTOMATIC);
         EventLog("Experiment Primed");
+        Serial.println("Experiment Primed");
         experimentPrimed = true;
-        n = moles();
       }
     }
-
     DataSave();  // Saves data
   }
-}
-
-void Controller() {
-  digitalWrite(valveGate, HIGH);  // Closes valve, LED 4 on
-  if ((pressureChamber > (pressureAtmos + maxPressureDiffernce)) || (pressureChamber < (pressureAtmos + maxPressureDiffernce))) {
-    jrk.setTarget(heightToByte(nextHeight()));
+  if (currentTime - previousTime >= PIDControlPeriod) {
+    pressureInput = double(pressureChamber);
+    pressureAtmosInput = 140000;
+    ActuatorPID.Compute();
+    //Serial.println(setHeight/100);
+    //jrk.setTarget(heightToByte(setHeight / 100));
   }
-
-  return;
 }
 
 void DataSave() {
@@ -327,7 +306,8 @@ void DataSave() {
       dataFile = SD.open(currentDataFileName.c_str(), FILE_WRITE);
       if (dataFile) {
         char buff[255];
-        sprintf(buff, "%xl , %.2f , %.2f , %f , %f , %.2f, %.2f , %.2f , %.1f ,  \n", currentTime, altitude, actualVelocity, pressureAtmos, pressureChamber, temperatureAtmos, temperatureChamber, accelZ, actuatorHeight, actuatorVoltage, actuatorCurrent);
+        sprintf(buff, "%lu, %.2f, %.2f, %f, %f, %.2f, %.2f, %.2f, %f, %f, %f\n",
+                currentTime, altitude, actualVelocity, pressureAtmos, pressureChamber, temperatureAtmos, temperatureChamber, accelZ, actuatorHeight, actuatorVoltage, actuatorCurrent);
         dataFile.print(buff);  // Pressure in chamber (hPa)
         dataFile.close();      // Close the file
       }
@@ -389,20 +369,22 @@ void Autotune() {
   return;
 }
 
-void pressureTune(){
+void pressureTune() {
+  Serial.println("Starting pressure tune");
   long microseconds;
   PIDAutotuner pressureTuner = PIDAutotuner();
-  pressureTuner.setTargetInputValue(140000);
+  pressureTuner.setTargetInputValue(140000);  //140000hPa
   pressureTuner.setLoopInterval(PIDControlPeriod);
-  pressureTuner.setOutputRange(1000, 90000);
+  pressureTuner.setOutputRange(1500, 90000);  //between 15 and 90mm
   pressureTuner.setZNMode(PIDAutotuner::ZNModeBasicPID);
   pressureTuner.startTuningLoop(micros());
 
   while (!pressureTuner.isFinished()) {
     microseconds = micros();
-    double input = double(Chamb.readPressure()*100);
+    double input = double(Chamb.readPressure());
     double output = pressureTuner.tunePID(input, microseconds);
-    jrk.setTarget(heightToByte(output/100));
+    jrk.setTarget(heightToByte(output / 100));
+    Serial.println(input);
     while (micros() - microseconds < PIDControlPeriod) delayMicroseconds(1);
   }
 
@@ -649,7 +631,22 @@ void SerialCMDHandle() {
             break;
           case 'B':
             {  //Test
-              Test();
+              //Test();
+            }
+            break;
+          case 'G':  //Goto pressure
+            {
+              char numBuff[5] = { buffer[3], buffer[4], buffer[5], buffer[6], buffer[7] };
+              double set = strtol(numBuff, NULL, 10);
+              set = 140000;
+
+              char buff[50];
+              sprintf(buff, "Going to %i hPa\n", (int)set);
+              Serial.println(buff);
+
+              pressureInput = double(Chamb.readPressure());
+
+              pressureAtmosInput = set;
             }
             break;
         }

@@ -124,6 +124,7 @@ with serial.Serial(selected_port,115200, timeout=timeout) as ser:
         message = read_serial_data(ser)
         print(toStr(message))
         if(message == None):
+            send_message(ser, StartMessage)
             continue
         if (message[0] == b'R'):
             if(message[1] == b'D'):
@@ -139,20 +140,25 @@ with serial.Serial(selected_port,115200, timeout=timeout) as ser:
                     
                     if((time.time() - startTime) < burnTime and (mode == 0 or mode == 1)):#burnAccel
                         vel = vel + burnAccel * (time.time()-lastTime)
+                        accel = burnAccel
                         mode = 1
                     elif(vel > 0 and (mode == 1 or mode == 2)):#coast
                         vel = vel + gravAccel * (time.time()-lastTime)
+                        accel = gravAccel
                         mode = 2
                     elif(alt > mainAlt and (mode == 2 or mode == 3)):#Drouge decent
+                        accel = -10
                         vel = drougeSpeed
                         mode = 3
                         if(not(deltaSet)):
                             deltaSet = True
                             deltaPressure = pressAtmosReading - pressAtmos
                     elif(alt < mainAlt and (mode == 3 or mode == 4)):#Main decent
+                        accel = -10
                         vel = mainSpeed
                         mode = 4
                     elif(alt <= 0 and (mode == 4 or mode == 5)):#Landed
+                        accel = -10
                         vel = 0
                         mode = 5
                         print("Done")
@@ -164,8 +170,8 @@ with serial.Serial(selected_port,115200, timeout=timeout) as ser:
                     pressChamb = pressChambReading - deltaPressure
 
                     lastTime = time.time()
-                    print("Velocity: {} Altitude: {} Pressure: {} Chamber pressure: {} Fake chamber Pressure: {} Mode: {}".format(vel,alt,pressAtmos,pressChambReading,pressChamb,mode))
-                    saveData(vel,alt,pressAtmos,pressChambReading,pressChamb,mode)
-                    data = [int(alt*1000),int(pressAtmos*1000),int(pressChamb*1000),int(tempAtmosReading*1000),int(tempChambReading*1000)]
+                    print("Velocity: {} Altitude: {} Pressure: {} Chamber pressure: {} Fake chamber Pressure: {} Acceleration: {} Mode: {}".format(vel,alt,pressAtmos,pressChambReading,pressChamb,accel,mode))
+                    saveData(vel,alt,pressAtmos,pressChambReading,pressChamb,accel,mode)
+                    data = [int(alt*1000),int(pressAtmos*1000),int(pressChamb*1000),int(tempAtmosReading*1000),int(tempChambReading*1000),int(accel*1000)]
                     send_message(ser,data)
 
