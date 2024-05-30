@@ -52,25 +52,14 @@
 #define startHeight 0       // Start height of the actuator (mm)
 #define maxHeight 70         // Max height of the actuator before it reaches BMP (mm)
 #define minHeight 0          // Min height before actuator leaves the chamber (mm)
-#define absMax 90            // Chamber max from actuator (mm)
 #define actuatorScale 40.95  // Scaling factor for feedback calcs
-#define maxTarget maxHeight* actuatorScale
-#define minTarget minHeight* actuatorScale
-#define EXPP 0.000001989347
-#define EXPI 0.000313
-#define EXPD 3182.051758
 
 //************** Experiment defines *************//
-#define activeTime 10
-#define standbyTime 10000
-#define targetAltitude 2500.0  // Extra condition to run main script. Underestimate of expected apogee (m)
-#define targetVelocity 0       // Velocity of the rocket's decent
+#define armAlt 2500.0           // Extra condition to run main script. Underestimate of expected apogee (m)
 #define groundAltitude 400     // Velocity to be under to end experiment
-#define groundVelocity 0.05    // Velocity to end experiment
-#define rocketLaunchSpike 2    // Condition for data saving to begin
-#define launchAccel 20
-#define radius 0.02                // Pressure chamber radius (m)
-#define area M_PI* pow(radius, 2)  // Area (m^2)
+#define groundVelocity 0.2     // Velocity to end experiment
+#define launchAccel 20         // Condition for data saving to begin
+
 
 //************** PID defines *************//
 #define tuneVal 40

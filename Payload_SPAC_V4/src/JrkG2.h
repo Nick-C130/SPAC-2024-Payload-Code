@@ -158,6 +158,7 @@ public:
     if (target > maxTarget){ target = maxTarget;}
     if (target < minTarget){ target = minTarget;}
     if (target > 4095) { target = 4095; }
+    target = target * actuatorScale;
     commandW7((uint8_t)JrkG2Command::SetTarget | (target & 0x1F), target >> 5);
   }
 
@@ -344,7 +345,7 @@ public:
   /// See also getScaledFeedback().
   uint16_t getFeedback()
   {
-    return getVar16SingleByte(VarOffset::Feedback);
+    return getVar16SingleByte(VarOffset::Feedback)/ actuatorScale;
   }
 
   /// Gets the scaled feedback variable.
