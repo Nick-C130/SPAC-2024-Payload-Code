@@ -22,19 +22,17 @@ float temperatureChamber;  // Reads chamber's temperature (C)
 
 sensors_event_t a, g, temp;  // Struct for MPU data
 
-float accelX;  // Reads accelaration in X axis
-float accelY;  // Reads accelaration in Y axis
 float accelZ;  // Reads accelaration in Z axis
-
-// float gyroX;  // Reads rotation in X axis
-// float gyroY;  // Reads rotation in Y axis
-// float gyroZ;  // Reads rotation in Z axis
 
 float actuatorHeight;   // Reads acuator's height (mm)
 float actuatorVoltage;  // Reads actuator's input volatage (mV)
 float actuatorCurrent;  // Reads actuator's current draw (mA)
 
-PID ActuatorPID(&pressureInput, &setHeight, &pressureAtmosInput, EXPP, EXPI, EXPD, DIRECT);
+double chamberPressure;
+double cmdVel;
+double atmosPressure;
+
+PID ActuatorPID(&chamberPressure, &cmdVel, &atmosPressure, Kp, Ki, Kd, DIRECT);
 
 JrkG2I2C jrk;           // Motor Controller
 Adafruit_BMP280 Atmos;  // First BMP280 sensor at address 0x76
@@ -46,20 +44,19 @@ File dataFile;                          // Sets a data file
 String currentDataFileName;             // File for Data
 String currentEventFileName;            // For for Event Logs
 
+uint8_t mode = INIT;
+
 bool sitl = false;
 char cbuff[100];
 
-// Creates a new csv on each boot
-String getNextFileName(String name, String type) {
-  int fileNumber = 0;
-  while (true) {
-    String fileName = name + String(fileNumber) + type;
-    if (!SD.exists(fileName.c_str())) {
-      return fileName;
-    }
-    fileNumber++;
-  }
-}
+String getNextFileName(String name, String type);
+void DataSave();
+void EventLog(String event);
+void clearArray(char *Array, uint8_t len);
+void SerialCMDHandle();
+bool recieveSITL();
+void readData();
+bool setSpeed(int speed);
 
 void setup() {
   Serial.begin(115200);
@@ -71,9 +68,6 @@ void setup() {
   pinMode(LED2, OUTPUT);
   pinMode(LED3, OUTPUT);
   pinMode(LED4, OUTPUT);
-
-  jrk.setPIDPeriod(PIDControlPeriod);
-  jrk.setIntegralLimit(integralLimit);
 
   jrk.setTarget(startHeight);
   delay(1000);
@@ -152,5 +146,323 @@ void setup() {
 }
 
 void loop() {
+  currentTime = millis();
+  if (currentTime - previousTime >= timeInterval){
+    if(sitl){recieveSITL();}//If doing SITL testing recieve SITL data
+    else{readData();}//Otherwise poll sensors
 
+    actualVelocity = (altitude - previousAltitude)/(currentTime - previousTime);
+
+    switch (mode){
+      case INIT://Initialising 
+      {
+        mode = READY;
+      }
+      break;
+      case READY:
+      {
+        if(accelZ >= launchAccel && actualVelocity >= minVel){//Detect launch based on both acceleration and velocity
+          mode = ASCENT;
+          timeInterval = 10;
+        }
+      }
+      break;
+      case ASCENT:
+      {
+        if(altitude > armAlt && actualVelocity <= minVel){mode = RUNNING;}//Detect apogee with velocity and safe this with a minimum altitude to start at
+      }
+      break;
+      case RUNNING:
+      {
+        ActuatorPID.Compute();
+        setSpeed(cmdVel);
+        if(altitude < groundAltitude && actualVelocity <= minVel){mode = DONE;}//Detect landing with alt and velocity
+      }
+      break;
+      case DONE:
+      {
+        delay(1);
+      }
+      break;
+    }
+    previousAltitude = altitude;
+    previousTime = currentTime;
+  }
+}
+
+bool setSpeed(int speed){
+  if(actuatorHeight >= maxHeight && speed > 0){
+    EventLog("Max height hit");
+    jrk.forceDutyCycle(0);
+    return 0;
+  }
+  if(actuatorHeight <= minHeight && speed < 0){
+    jrk.forceDutyCycle(0);
+    EventLog("Min height hit");
+    return 0;
+  }
+  jrk.forceDutyCycle(speed);
+  return(1);
+}
+
+String getNextFileName(String name, String type) {
+  int fileNumber = 0;
+  while (true) {
+    String fileName = name + String(fileNumber) + type;
+    if (!SD.exists(fileName.c_str())) {
+      return fileName;
+    }
+    fileNumber++;
+  }
+}
+
+void DataSave() {
+  dataFile = SD.open(currentDataFileName.c_str(), FILE_WRITE);
+  if (dataFile) {
+    char buff[255];
+    sprintf(buff, "%lu, %.2f, %.2f, %f, %f, %.2f, %.2f, %.2f, %f, %f, %f\n",
+      currentTime, altitude, actualVelocity, pressureAtmos, pressureChamber, temperatureAtmos, temperatureChamber, accelZ, actuatorHeight, actuatorVoltage, actuatorCurrent);
+    dataFile.print(buff);  // Pressure in chamber (hPa)
+    dataFile.close();      // Close the file
+  }
+  return;
+}
+
+void EventLog(String event) {
+  if (sdAv) {
+    dataFile = SD.open(currentEventFileName.c_str(), FILE_WRITE);
+    if (dataFile) {
+      dataFile.println(event);  //Header Row
+      dataFile.close();         // Close the file
+    }
+  }
+  return;
+}
+
+void readData(){
+  altitude = Atmos.readAltitude();
+  pressureAtmos = Atmos.readPressure();
+  pressureChamber = Chamb.readPressure();
+  pressureDifference = pressureAtmos - pressureChamber;
+  temperatureAtmos = Atmos.readTemperature();
+  temperatureChamber = Chamb.readTemperature();
+  actuatorHeight = jrk.getScaledFeedback();
+  actuatorVoltage = jrk.getVinVoltage();
+  actuatorCurrent = jrk.getCurrent();
+  MPU.getEvent(&a, &g, &temp);
+  accelZ = a.acceleration.z;
+}
+
+bool recieveSITL(){
+  pressureChamber = Chamb.readPressure();
+  temperatureChamber = Chamb.readTemperature();
+  sprintf(cbuff,"RD, %f, %f",pressureChamber,temperatureChamber);
+  Serial.print(cbuff);  //Send RD to python script to get it to send data
+  char incomming[SITLLength];
+  if (Serial.readBytes(incomming, SITLLength) == SITLLength) {
+    altitude = (incomming[0] << 3 * 8) | (incomming[1] << 2 * 8) | (incomming[2] << 1 * 8) | incomming[3];
+    pressureAtmos = (incomming[4] << 3 * 8) | (incomming[5] << 2 * 8) | (incomming[6] << 1 * 8) | incomming[7];
+    pressureChamber = (incomming[8] << 3 * 8) | (incomming[9] << 2 * 8) | (incomming[10] << 1 * 8) | incomming[11];
+    temperatureAtmos = (incomming[12] << 3 * 8) | (incomming[13] << 2 * 8) | (incomming[14] << 1 * 8) | incomming[15];
+    temperatureChamber = (incomming[16] << 3 * 8) | (incomming[17] << 2 * 8) | (incomming[18] << 1 * 8) | incomming[19];
+    accelZ = (incomming[20] << 3 * 8) | (incomming[21] << 2 * 8) | (incomming[22] << 1 * 8) | incomming[23];
+    
+    pressureDifference = pressureAtmos - pressureChamber;
+    actuatorHeight = jrk.getScaledFeedback();
+    actuatorVoltage = jrk.getVinVoltage();
+    actuatorCurrent = jrk.getCurrent();
+    return (1);
+  } else {
+    Serial.println("Error: No data recieved");
+    return (0);
+  }
+}
+
+void clearArray(char *Array, uint8_t len) {
+  while (len != 0) {
+    Array[len - 1] = 0;
+    len--;
+  }
+  return;
+}
+
+void SerialCMDHandle() {
+  static uint8_t index;
+  static char buffer[100];
+  bool command = false;
+
+  if (Serial.available()) {
+    buffer[index] = Serial.read();
+    Serial.print(buffer[index]);
+    index++;
+    if (index == 100) {
+      index = 0;
+      Serial.println("Buffer Overflow");
+      clearArray(buffer, 100);
+    }
+  }
+
+  uint8_t i = 0;
+  while (i < 100) {
+    if (buffer[i] == '\r' || buffer[i] == '\n') {
+      command = true;
+    }
+    i++;
+  }
+
+  if (command) {
+    switch (buffer[0]) {
+      case 'M':  //MOSFET
+        switch (buffer[1]) {
+          case 'V':
+            {  //VALVE
+              char byte = buffer[3];
+              if (byte == '0') {
+                digitalWrite(valveGate, LOW);
+                Serial.println("Valve Off");
+              } else if (byte == '1') {
+                digitalWrite(valveGate, HIGH);
+                Serial.println("Valve On");
+              }
+            }
+            break;
+          case 'M':
+            {  //VALVE
+              char byte = buffer[3];
+              if (byte == '0') {
+                digitalWrite(motorGate, LOW);
+                Serial.println("Motor Off");
+              } else if (byte == '1') {
+                digitalWrite(motorGate, HIGH);
+                Serial.println("Motor On");
+              }
+              break;
+            }
+        }
+      case 'S':  //Sensors
+        switch (buffer[1]) {
+          case 'A':
+            {  //Atmospheric
+              char buff[100];
+              sprintf(buff, "Alt: %f m| Press: %f Pa| Temp %f C \n", Atmos.readAltitude(), Atmos.readPressure(), Atmos.readTemperature());
+              Serial.print(buff);
+            }
+            break;
+          case 'C':
+            {  //Chamber
+              char buff[100];
+              sprintf(buff, "Alt: %f m| Press: %f Pa| Temp %f C \n", Chamb.readAltitude(), Chamb.readPressure(), Chamb.readTemperature());
+              Serial.print(buff);
+            }
+            break;
+          case 'M':
+            {  //Motor Controller
+              char buff[100];
+              sprintf(buff, "Pos: %f mm| Vin: %u mV| Current: %u mA \n", jrk.getScaledFeedback(), jrk.getVinVoltage(), jrk.getRawCurrent());
+              Serial.print(buff);
+            }
+            break;
+          case 'I':
+            {  //MPU6050
+              MPU.getEvent(&a, &g, &temp);
+              char buff[100];
+              sprintf(buff, "Ax: %f | Ay: %f | Az %f \n", a.acceleration.x, a.acceleration.y, a.acceleration.z);
+              Serial.print(buff);
+
+              sprintf(buff, "Gx: %f | Gy: %f | Gz %f \n", g.gyro.x, g.gyro.y, g.gyro.z);
+              Serial.print(buff);
+            }
+            break;
+          case 'R':
+            {  //Reset
+              Atmos.reset();
+              Chamb.reset();
+              MPU.reset();
+              Serial.print("Sensors Reset");
+            }
+            break;
+          case 'O':
+            {  //All Data
+              {
+                char buff[255];
+
+                // First line
+                sprintf(buff, "Current Time: %lu ms| Delta Time: %lu s| Altitude: %.2f m", currentTime, deltaTime, altitude);
+                Serial.println(buff);
+
+                // Second line
+                sprintf(buff, "Velocity: %.2f m/s| Pressure Atmos: %.2f Pa| Pressure Chamber: %.2f Pa", actualVelocity, pressureAtmos, pressureChamber);
+                Serial.println(buff);
+
+                // Third line
+                sprintf(buff, "Temperature Atmos: %.1f C| Temperature Chamber: %.1f C| Actuator Height: %.1f mm", temperatureAtmos, temperatureChamber, actuatorHeight);
+                Serial.println(buff);
+
+                MPU.getEvent(&a, &g, &temp);
+
+                // Fourth line
+                sprintf(buff, "Ax: %f | Ay: %f | Az %f \n", a.acceleration.x, a.acceleration.y, a.acceleration.z);
+                Serial.print(buff);
+
+                // Fifth line
+                sprintf(buff, "Gx: %f | Gy: %f | Gz %f \n", g.gyro.x, g.gyro.y, g.gyro.z);
+                Serial.print(buff);
+
+                // Sixth line
+                sprintf(buff, "Vin: %u mV| Current: %u mA \n", jrk.getVinVoltage(), jrk.getRawCurrent());
+                Serial.print(buff);
+              }
+            }
+            break;
+          case 'P':
+            {  //PID values
+              char cbuff[100];
+              sprintf(cbuff, "KP: %i KPE: %i KI: %i KIE: %i KD: %i KDE: %i\n", jrk.getProportionalMultiplier(), jrk.getProportionalExponent(), jrk.getIntegralMultiplier(), jrk.getIntegralExponent(), jrk.getDerivativeMultiplier(), jrk.getDerivativeExponent());
+              Serial.print(cbuff);
+            }
+            break;
+          case 'V':
+            {  // Velocity
+              char cbuff[100];
+              sprintf(cbuff, "Altitude: %.2f m| Velocity: %.2f m/s \n", altitude, actualVelocity);
+              Serial.print(cbuff);
+            }
+            break;
+          case 'E':
+            {
+              char cbuff[100];
+              sprintf(cbuff, "Experiment Status: %i | Pressure Difference %.2f Pa \n", experimentPrimed, pressureDifference);
+              Serial.print(cbuff);
+            }
+        }
+      case 'A':  //Actuator
+        switch (buffer[1]) {
+          case 'S':
+            {  //Set input of mm*10
+              char numBuff[3] = { buffer[3], buffer[4], buffer[5] };
+              float set = strtol(numBuff, NULL, 10) / 10;
+              char buff[50];
+              sprintf(buff, "Going to %.1f mm", set);
+              Serial.println(buff);
+              jrk.setTarget(set);
+            }
+            break;
+          case 'X':
+            {
+              char byte = buffer[3];
+              if (byte == '0') {
+                experimentPrimed = false;
+              } else if (byte == '1') {
+                experimentPrimed = true;
+              }
+              char cbuff[100];
+              sprintf(cbuff, "Experiment status: %i\n", experimentPrimed);
+              Serial.print(cbuff);
+            }
+        }
+    }
+    clearArray(buffer, 100);
+    index = 0;
+  }
+  return;
 }

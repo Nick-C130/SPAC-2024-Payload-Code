@@ -13,10 +13,9 @@ void JrkG2Serial::commandW7(uint8_t cmd, uint8_t val)
 
 void JrkG2Serial::commandWs14(uint8_t cmd, int16_t val)
 {
-  uint16_t v = val;
   sendCommandHeader(cmd);
-  serialW7(v);  // lower 7 bits
-  serialW7(v >> 7);  // upper 7 bits
+  serialW7(val);  // lower 7 bits
+  serialW7(val >> 7);  // upper 7 bits
 
   _lastError = 0;
 }

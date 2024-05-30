@@ -18,17 +18,17 @@
 
 /// This is used to represent a null or missing value for some of the Jrk G2's
 /// 16-bit input variables.
-const uint16_t JrkG2InputNull = 0xFFFF;
+#define JrkG2InputNull 0xFFFF
 
 /// This value is returned by getLastError() if the last communication with the
 /// device resulted in an unsuccessful read (e.g. timeout or NACK).
-const uint8_t JrkG2CommReadError = 50;
+#define JrkG2CommReadError 50
 
 /// This enum defines the Jrk's error bits.  See the "Error handling" section of
 /// the Jrk G2 user's guide for more information about what these errors mean.
 ///
 /// See JrkG2Base::getErrorFlagsHalting() and JrkG2Base::getErrorFlagsOccurred().
-enum class JrkG2Error
+enum JrkG2Error
 {
   AwaitingCommand     = 0,
   NoPower             = 1,
@@ -155,10 +155,10 @@ public:
   {
     // lower 5 bits in command byte
     // upper 7 bits in data byte
-    if (target > maxTarget){ target = maxTarget;}
-    if (target < minTarget){ target = minTarget;}
-    if (target > 4095) { target = 4095; }
     target = target * actuatorScale;
+    if (target > maxHeight){ target = maxHeight;}
+    if (target < minHeight){ target = minHeight;}
+    if (target > 4095) { target = 4095; }
     commandW7((uint8_t)JrkG2Command::SetTarget | (target & 0x1F), target >> 5);
   }
 
@@ -354,9 +354,9 @@ public:
   /// configurable feedback scaling settings.
   ///
   /// See also getFeedback().
-  uint16_t getScaledFeedback()
+  float getScaledFeedback()
   {
-    return getVar16SingleByte(VarOffset::ScaledFeedback);
+    return getVar16SingleByte(VarOffset::ScaledFeedback)/actuatorScale;
   }
 
   /// Gets the integral variable.

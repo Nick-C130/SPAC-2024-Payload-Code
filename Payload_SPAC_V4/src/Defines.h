@@ -37,43 +37,36 @@
 #define maxTempDifference 4
 #define maxPressureDiffernce 100
 
-//************** IMU Sensor defines *************//
-
-// #define AccelX
-// #define AccelY
-// #define AccelZ
-
-// #define GyroX
-// #define GyroY
-// #define GyroZ
-
-
 //************** Actuator defines *************//
 #define startHeight 0       // Start height of the actuator (mm)
 #define maxHeight 70         // Max height of the actuator before it reaches BMP (mm)
 #define minHeight 0          // Min height before actuator leaves the chamber (mm)
 #define actuatorScale 40.95  // Scaling factor for feedback calcs
+#define maxTarget maxHeight* actuatorScale
+#define minTarget minHeight* actuatorScale
 
 //************** Experiment defines *************//
 #define armAlt 2500.0           // Extra condition to run main script. Underestimate of expected apogee (m)
-#define groundAltitude 400     // Velocity to be under to end experiment
-#define groundVelocity 0.2     // Velocity to end experiment
-#define launchAccel 20         // Condition for data saving to begin
-
+#define groundAltitude 400      // Velocity to be under to end experiment
+#define groundVelocity 0.2      // Velocity to end experiment
+#define launchAccel 20          // Condition for data saving to begin
+#define minVel 10               // Minimum velocity for both ascent detection and apogee detection
 
 //************** PID defines *************//
-#define tuneVal 40
-#define proportionalCoef 10
-#define proportionalExpo 0
-#define integralCoef 819
-#define integralExpo 13
-#define derivativeCoef 5
-#define derivativeExpo 0
-#define PIDControlPeriod 30
-#define integralLimit 6000
-
+#define Kp 1
+#define Ki 1
+#define Kd 1
 
 //************** STIL defines *************//
 #define SITLLength 24
+
+//************** Mode defines *************//
+enum modeTypes{
+    INIT,
+    READY,
+    ASCENT,
+    RUNNING,
+    DONE
+};
 
 #endif
