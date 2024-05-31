@@ -51,6 +51,8 @@
 #define groundVelocity 0.2      // Velocity to end experiment
 #define launchAccel 20          // Condition for data saving to begin
 #define minVel 10               // Minimum velocity for both ascent detection and apogee detection
+#define tunePress 140000        //Pa
+#define expRunTime 10           //ms between updates
 
 //************** PID defines *************//
 #define Kp 1
