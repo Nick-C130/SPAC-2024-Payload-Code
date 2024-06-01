@@ -49,6 +49,14 @@ uint8_t mode = INIT;
 bool sitl = false;
 char cbuff[100];
 
+struct PIDVals
+{
+  double kp;
+  double ki;
+  double kd;
+  uint8_t checksum;
+};
+
 String getNextFileName(String name, String type);
 void DataSave();
 void EventLog(String event);
@@ -58,6 +66,7 @@ bool recieveSITL();
 void readData();
 bool setSpeed(int speed);
 void Autotune();
+uint8_t compute_checksum(double f1, double f2, double f3);
 
 int main()
 {
@@ -175,6 +184,14 @@ int main()
         previousTime = millis();
         altitude = Atmos.readAltitude();
         previousAltitude = altitude;
+
+        PIDVals eepromVals;
+        EEPROM.get(0, eepromVals);
+        uint8_t checksum = compute_checksum(eepromVals.kp, eepromVals.ki, eepromVals.kd);
+        if ((eepromVals.kp != -1) && (checksum = eepromVals.checksum))
+        {
+          ActuatorPID.SetTunings(eepromVals.kp, eepromVals.ki, eepromVals.kd);
+        }
 
         mode = READY;
         EventLog("Switching to ready mode");
@@ -506,9 +523,31 @@ void Autotune()
       delayMicroseconds(1);
   }
 
+  uint8_t checksum = compute_checksum(tuner.getKp(), tuner.getKi(), tuner.getKd());
+  PIDVals Tuned = {tuner.getKp(), tuner.getKi(), tuner.getKd(), checksum};
+  EEPROM.put(0, Tuned);
   char buff[50];
   sprintf(buff, "Kp %f, Ki %f, Kd %f", tuner.getKp(), tuner.getKi(), tuner.getKd());
   Serial.println(buff);
   EventLog("PID Tuned");
   return;
+}
+
+uint8_t compute_checksum(double f1, double f2, double f3)
+{
+  // Array to hold the four float values
+  double doubles[4] = {f1, f2, f3};
+
+  // Pointer to access the bytes of the float array
+  uint8_t *bytes = (uint8_t *)doubles;
+
+  // Compute the checksum by summing all bytes
+  uint32_t checksum = 0;
+  for (uint8_t i = 0; i < 3 * sizeof(double); i++)
+  {
+    checksum += bytes[i];
+  }
+
+  // Reduce the checksum to fit into a uint8_t
+  return (uint8_t)(checksum & 0xFF);
 }
