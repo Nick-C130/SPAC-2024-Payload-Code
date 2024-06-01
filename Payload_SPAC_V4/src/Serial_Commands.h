@@ -11,4 +11,3 @@
 //************** Actuator *************//
 // AS xxx- Sets actuator height to xxx/10mm
 // AT - Runs PID autotuner
-// AX x - 0 turns experiment off, 1 primes experiment

@@ -456,7 +456,7 @@ void SerialCMDHandle()
       case 'E':
       {
         char cbuff[100];
-        sprintf(cbuff, "Experiment Status: %i | Pressure Difference %.2f Pa \n", experimentPrimed, pressureDifference);
+        sprintf(cbuff, "State machine: %i | Pressure Difference %.2f Pa \n", mode, pressureDifference);
         Serial.print(cbuff);
       }
       }
@@ -471,22 +471,6 @@ void SerialCMDHandle()
         sprintf(buff, "Going to %.1f mm", set);
         Serial.println(buff);
         jrk.setTarget(set);
-      }
-      break;
-      case 'X':
-      {
-        char byte = buffer[3];
-        if (byte == '0')
-        {
-          experimentPrimed = false;
-        }
-        else if (byte == '1')
-        {
-          experimentPrimed = true;
-        }
-        char cbuff[100];
-        sprintf(cbuff, "Experiment status: %i\n", experimentPrimed);
-        Serial.print(cbuff);
       }
       break;
       case 'T':

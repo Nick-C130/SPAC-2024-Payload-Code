@@ -13,9 +13,6 @@
 #include <EEPROM.h>
 #include <PID_v1.h>
 
-//************** Alias defines *************//
-#define AccWire Wire2  // Changes Wire for JRK to Wire2
-
 //************** Pin defines *************//
 #define LED1 0          // Status LED1
 #define LED2 1          // Status LED2
@@ -41,7 +38,6 @@
 #define startHeight 0       // Start height of the actuator (mm)
 #define maxHeight 70         // Max height of the actuator before it reaches BMP (mm)
 #define minHeight 0          // Min height before actuator leaves the chamber (mm)
-#define actuatorScale 40.95  // Scaling factor for feedback calcs
 #define maxTarget maxHeight* actuatorScale
 #define minTarget minHeight* actuatorScale
 

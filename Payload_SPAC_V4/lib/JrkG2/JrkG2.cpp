@@ -1,6 +1,5 @@
 #include "JrkG2.h"
 #include <Arduino.h>
-#include "Defines.h"
 /**** JrkG2Serial ****/
 
 void JrkG2Serial::commandW7(uint8_t cmd, uint8_t val)

@@ -14,7 +14,14 @@
 #include <Arduino.h>
 #include <Stream.h>
 #include <Wire.h>
-#include "Defines.h"
+
+
+#define AccWire Wire2  // Changes Wire for JRK to Wire2
+#define actuatorScale 40.95  // Scaling factor for feedback calcs
+#define maxHeight 70         // Max height of the actuator before it reaches BMP (mm)
+#define minHeight 0          // Min height before actuator leaves the chamber (mm)
+#define maxTarget maxHeight* actuatorScale
+#define minTarget minHeight* actuatorScale
 
 /// This is used to represent a null or missing value for some of the Jrk G2's
 /// 16-bit input variables.
