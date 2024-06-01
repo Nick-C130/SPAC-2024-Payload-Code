@@ -28,11 +28,11 @@ float actuatorHeight;  // Reads acuator's height (mm)
 float actuatorVoltage; // Reads actuator's input volatage (mV)
 float actuatorCurrent; // Reads actuator's current draw (mA)
 
-double chamberPressure;
-double cmdVel;
-double atmosPressure;
+float currentPressure;
+float cmdVel;
+float targetPressure;
 
-PID ActuatorPID(&chamberPressure, &cmdVel, &atmosPressure, Kp, Ki, Kd, DIRECT);
+PID ActuatorPID(&currentPressure, &cmdVel, &targetPressure, Kp, Ki, Kd, DIRECT);
 
 JrkG2I2C jrk;          // Motor Controller
 Adafruit_BMP280 Atmos; // First BMP280 sensor at address 0x76
@@ -44,6 +44,8 @@ File dataFile;               // Sets a data file
 String currentDataFileName;  // File for Data
 String currentEventFileName; // For for Event Logs
 
+bool override = false;
+
 uint8_t mode = INIT;
 
 bool sitl = false;
@@ -51,9 +53,9 @@ char cbuff[100];
 
 struct PIDVals
 {
-  double kp;
-  double ki;
-  double kd;
+  float kp;
+  float ki;
+  float kd;
   uint8_t checksum;
 };
 
@@ -66,7 +68,7 @@ bool recieveSITL();
 void readData();
 bool setSpeed(int speed);
 void Autotune();
-uint8_t compute_checksum(double f1, double f2, double f3);
+uint8_t compute_checksum(float f1, float f2, float f3);
 
 int main()
 {
@@ -84,6 +86,14 @@ int main()
       {
         readData();
       } // Otherwise poll sensors
+
+      if(override){
+        currentPressure = pressureChamber;
+        ActuatorPID.Compute();
+        sprintf(cbuff,"Tgt: %ul, Crnt: %ul, cmdVel: %i",(unsigned long) targetPressure,(unsigned long) currentPressure,(uint16_t) cmdVel);
+        Serial.println(cbuff);
+        setSpeed(cmdVel);
+      }
 
       actualVelocity = (altitude - previousAltitude) / (currentTime - previousTime);
 
@@ -188,10 +198,16 @@ int main()
         PIDVals eepromVals;
         EEPROM.get(0, eepromVals);
         uint8_t checksum = compute_checksum(eepromVals.kp, eepromVals.ki, eepromVals.kd);
-        if ((eepromVals.kp != -1) && (checksum = eepromVals.checksum))
+        if ((eepromVals.kp != -1) && (checksum = eepromVals.checksum) && false)
         {
           ActuatorPID.SetTunings(eepromVals.kp, eepromVals.ki, eepromVals.kd);
+          EventLog("Using eeprom PID values");
         }
+        else{
+          EventLog("Using #define PID values");
+        }
+
+        ActuatorPID.SetOutputLimits(-600, 600);
 
         mode = READY;
         EventLog("Switching to ready mode");
@@ -204,6 +220,7 @@ int main()
           mode = ASCENT;
           timeInterval = expRunTime;
           EventLog("Liftoff detected");
+          ActuatorPID.SetMode(AUTOMATIC);
         }
       }
       break;
@@ -218,6 +235,8 @@ int main()
       break;
       case RUNNING:
       {
+        targetPressure = pressureAtmos + offsetPressure;
+        currentPressure = pressureChamber;
         ActuatorPID.Compute();
         setSpeed(cmdVel);
         if (altitude < groundAltitude && actualVelocity <= minVel)
@@ -242,6 +261,7 @@ int main()
 
 bool setSpeed(int speed)
 {
+  actuatorHeight = jrk.getScaledFeedback();
   if(speed > maxSpeed){
     speed = maxSpeed;
   }
@@ -303,6 +323,7 @@ void EventLog(String event)
       dataFile.print(",");
       dataFile.println(event); // Header Row
       dataFile.close();        // Close the file
+      Serial.println(event);
     }
   }
   return;
@@ -501,6 +522,25 @@ void SerialCMDHandle()
         Autotune();
       }
       break;
+      case 'P':
+      {
+        char numBuff[6] = {buffer[3], buffer[4], buffer[5],buffer[6], buffer[7], buffer[8]};
+        float set = strtol(numBuff, NULL, 10);
+        char buff[50];
+        if (set > 100000){
+          sprintf(buff, "Going to %.1f Pa", set);
+          Serial.println(buff);
+          targetPressure = set;
+          override = true;
+          ActuatorPID.SetMode(AUTOMATIC);
+          timeInterval = expRunTime;
+        }
+        else{
+          Serial.print("Override disabled");
+          override = false;
+        }
+      }
+      break;
       }
     }
     clearArray(buffer, 100);
@@ -513,7 +553,7 @@ void Autotune()
 {
   PIDAutotuner tuner = PIDAutotuner();
   tuner.setTargetInputValue(tunePress);
-  tuner.setLoopInterval(expRunTime);
+  tuner.setLoopInterval((expRunTime*1000));
   tuner.setOutputRange(-maxSpeed, maxSpeed);
   tuner.setZNMode(PIDAutotuner::znModeBasicPID);
   tuner.startTuningLoop();
@@ -522,10 +562,10 @@ void Autotune()
   while (!tuner.isFinished())
   {
     microseconds = micros();
-    double input = Chamb.readPressure();
-    double output = tuner.tunePID(input);
+    float input = Chamb.readPressure();
+    float output = tuner.tunePID(input);
     setSpeed(output);
-    while (micros() - microseconds < expRunTime)
+    while (micros() - microseconds < (expRunTime*1000))
       delayMicroseconds(1);
   }
 
@@ -539,17 +579,17 @@ void Autotune()
   return;
 }
 
-uint8_t compute_checksum(double f1, double f2, double f3)
+uint8_t compute_checksum(float f1, float f2, float f3)
 {
   // Array to hold the four float values
-  double doubles[4] = {f1, f2, f3};
+  float floats[4] = {f1, f2, f3};
 
   // Pointer to access the bytes of the float array
-  uint8_t *bytes = (uint8_t *)doubles;
+  uint8_t *bytes = (uint8_t *)floats;
 
   // Compute the checksum by summing all bytes
   uint32_t checksum = 0;
-  for (uint8_t i = 0; i < 3 * sizeof(double); i++)
+  for (uint8_t i = 0; i < 3 * sizeof(float); i++)
   {
     checksum += bytes[i];
   }

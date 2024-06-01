@@ -49,12 +49,13 @@
 #define launchAccel 20          // Condition for data saving to begin
 #define minVel 10               // Minimum velocity for both ascent detection and apogee detection
 #define tunePress 140000        //Pa
-#define expRunTime 10           //ms between updates
+#define expRunTime 1            //ms between updates
+#define offsetPressure 1000     //Pa over atmos that the chamber tries to hold
 
 //************** PID defines *************//
-#define Kp 1
-#define Ki 1
-#define Kd 1
+#define Kp 0.033247
+#define Ki 0.00410
+#define Kd 0.002541
 
 //************** STIL defines *************//
 #define SITLLength 24

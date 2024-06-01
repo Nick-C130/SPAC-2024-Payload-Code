@@ -162,9 +162,9 @@ public:
   {
     // lower 5 bits in command byte
     // upper 7 bits in data byte
-    target = target * actuatorScale;
     if (target > maxHeight){ target = maxHeight;}
     if (target < minHeight){ target = minHeight;}
+    target = target * actuatorScale;
     if (target > 4095) { target = 4095; }
     commandW7((uint8_t)JrkG2Command::SetTarget | (target & 0x1F), target >> 5);
   }
