@@ -40,6 +40,7 @@
 #define minHeight 0          // Min height before actuator leaves the chamber (mm)
 #define maxTarget maxHeight* actuatorScale
 #define minTarget minHeight* actuatorScale
+#define maxSpeed 600
 
 //************** Experiment defines *************//
 #define armAlt 2500.0           // Extra condition to run main script. Underestimate of expected apogee (m)

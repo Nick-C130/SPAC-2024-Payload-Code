@@ -242,6 +242,12 @@ int main()
 
 bool setSpeed(int speed)
 {
+  if(speed > maxSpeed){
+    speed = maxSpeed;
+  }
+  if(speed < -maxSpeed){
+    speed = -maxSpeed;
+  }
   if (actuatorHeight >= maxHeight && speed > 0)
   {
     EventLog("Max height hit");
@@ -508,7 +514,7 @@ void Autotune()
   PIDAutotuner tuner = PIDAutotuner();
   tuner.setTargetInputValue(tunePress);
   tuner.setLoopInterval(expRunTime);
-  tuner.setOutputRange(minHeight, maxHeight);
+  tuner.setOutputRange(-maxSpeed, maxSpeed);
   tuner.setZNMode(PIDAutotuner::znModeBasicPID);
   tuner.startTuningLoop();
 
