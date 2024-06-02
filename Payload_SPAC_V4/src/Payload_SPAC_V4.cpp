@@ -4,10 +4,10 @@
 bool experimentPrimed = false; // Actuator off until true
 bool dataSavePrimed = false;   // Data starts saving on launch
 
-unsigned long currentTime;         // Variable for time (ms)
-unsigned long previousTime = 0;    // Initial time variable (ms)
-unsigned long timeInterval = 1000; // Initial interval between sensor readings (ms)
-unsigned long deltaTime;           // Calculates time difference (s)
+unsigned long currentTime;        // Variable for time (ms)
+unsigned long previousTime = 0;   // Initial time variable (ms)
+unsigned long timeInterval = 100; // Initial interval between sensor readings (ms)
+unsigned long deltaTime;          // Calculates time difference (s)
 
 float actualVelocity; // Velocity as calculated by barometer (m/s)
 
@@ -49,7 +49,14 @@ bool override = false;
 uint8_t mode = INIT;
 
 bool sitl = false;
-char cbuff[100];
+uint8_t simMode = SIM_INIT;
+long deltaPressure;
+unsigned long currentSimTime;
+unsigned long sitlStartTime;
+float simVel;
+unsigned long lastSimTime; 
+
+char cbuff[512];
 
 struct PIDVals
 {
@@ -64,7 +71,8 @@ void DataSave();
 void EventLog(String event);
 void clearArray(char *Array, uint8_t len);
 void SerialCMDHandle();
-bool recieveSITL();
+bool sim();
+long altToPress(uint16_t alt);
 void readData();
 bool setSpeed(int speed);
 void Autotune();
@@ -80,22 +88,23 @@ int main()
     {
       if (sitl)
       {
-        recieveSITL();
+        if(sim()){sitl = false;}
       } // If doing SITL testing recieve SITL data
       else
       {
         readData();
       } // Otherwise poll sensors
 
-      if(override){
+      if (override)
+      {
         currentPressure = pressureChamber;
         ActuatorPID.Compute();
-        sprintf(cbuff,"Tgt: %ul, Crnt: %ul, cmdVel: %i",(unsigned long) targetPressure,(unsigned long) currentPressure,(uint16_t) cmdVel);
+        sprintf(cbuff, "Tgt: %lu, Crnt: %lu, cmdVel: %i", (unsigned int)targetPressure, (unsigned long)currentPressure, (uint16_t)cmdVel);
         Serial.println(cbuff);
         setSpeed(cmdVel);
       }
 
-      actualVelocity = (altitude - previousAltitude) / (currentTime - previousTime);
+      actualVelocity = 1000*(altitude - previousAltitude) / (float)(currentTime - previousTime);
 
       switch (mode)
       {
@@ -203,11 +212,13 @@ int main()
           ActuatorPID.SetTunings(eepromVals.kp, eepromVals.ki, eepromVals.kd);
           EventLog("Using eeprom PID values");
         }
-        else{
+        else
+        {
           EventLog("Using #define PID values");
         }
 
         ActuatorPID.SetOutputLimits(-600, 600);
+        ActuatorPID.pOn = 1;
 
         mode = READY;
         EventLog("Switching to ready mode");
@@ -215,7 +226,7 @@ int main()
       break;
       case READY:
       {
-        if (accelZ >= launchAccel && actualVelocity >= minVel)
+        if ((accelZ >= launchAccel) && (actualVelocity >= minVel))
         { // Detect launch based on both acceleration and velocity
           mode = ASCENT;
           timeInterval = expRunTime;
@@ -226,7 +237,8 @@ int main()
       break;
       case ASCENT:
       {
-        if (altitude > armAlt && actualVelocity <= minVel)
+        DataSave();
+        if ((altitude > armAlt) && (actualVelocity <= -minVel))
         {
           mode = RUNNING;
           EventLog("Apogee");
@@ -235,6 +247,7 @@ int main()
       break;
       case RUNNING:
       {
+        DataSave();
         targetPressure = pressureAtmos + offsetPressure;
         currentPressure = pressureChamber;
         ActuatorPID.Compute();
@@ -262,10 +275,12 @@ int main()
 bool setSpeed(int speed)
 {
   actuatorHeight = jrk.getScaledFeedback();
-  if(speed > maxSpeed){
+  if (speed > maxSpeed)
+  {
     speed = maxSpeed;
   }
-  if(speed < -maxSpeed){
+  if (speed < -maxSpeed)
+  {
     speed = -maxSpeed;
   }
   if (actuatorHeight >= maxHeight && speed > 0)
@@ -344,33 +359,95 @@ void readData()
   accelZ = a.acceleration.z;
 }
 
-bool recieveSITL()
+bool sim()
 {
-  pressureChamber = Chamb.readPressure();
-  temperatureChamber = Chamb.readTemperature();
-  sprintf(cbuff, "RD, %f, %f", pressureChamber, temperatureChamber);
-  Serial.print(cbuff); // Send RD to python script to get it to send data
-  char incomming[SITLLength];
-  if (Serial.readBytes(incomming, SITLLength) == SITLLength)
-  {
-    altitude = (incomming[0] << 3 * 8) | (incomming[1] << 2 * 8) | (incomming[2] << 1 * 8) | incomming[3];
-    pressureAtmos = (incomming[4] << 3 * 8) | (incomming[5] << 2 * 8) | (incomming[6] << 1 * 8) | incomming[7];
-    pressureChamber = (incomming[8] << 3 * 8) | (incomming[9] << 2 * 8) | (incomming[10] << 1 * 8) | incomming[11];
-    temperatureAtmos = (incomming[12] << 3 * 8) | (incomming[13] << 2 * 8) | (incomming[14] << 1 * 8) | incomming[15];
-    temperatureChamber = (incomming[16] << 3 * 8) | (incomming[17] << 2 * 8) | (incomming[18] << 1 * 8) | incomming[19];
-    accelZ = (incomming[20] << 3 * 8) | (incomming[21] << 2 * 8) | (incomming[22] << 1 * 8) | incomming[23];
+  currentSimTime = millis();
+  float deltaT = (currentSimTime - lastSimTime)/1000.0;
+  float simTime = (currentSimTime - sitlStartTime)/1000.0;
+  float realPress = Chamb.readPressure();
 
-    pressureDifference = pressureAtmos - pressureChamber;
-    actuatorHeight = jrk.getScaledFeedback();
-    actuatorVoltage = jrk.getVinVoltage();
-    actuatorCurrent = jrk.getCurrent();
-    return (1);
-  }
-  else
+  switch (simMode)
   {
-    Serial.println("Error: No data recieved");
-    return (0);
+  case SIM_INIT:
+    simMode = BOOST;
+    simVel = 0;
+    lastSimTime = currentSimTime;
+    deltaPressure = 0;
+    deltaT = 0;
+    sitlStartTime = currentSimTime;
+    Serial.println("Starting new sim");
+    break;
+  case BOOST:
+    accelZ = burnAccel/10;
+    simVel = simVel + (burnAccel * deltaT);
+    altitude = altitude + (simVel * deltaT);
+    pressureAtmos = altToPress(altitude);
+    pressureChamber = pressureAtmos;
+    if (simTime > burnTime)
+    {
+      simMode = COAST;
+    }
+    break;
+  case COAST:
+    accelZ = dragAccel/10;
+    simVel = simVel + (dragAccel * deltaT);
+    altitude = altitude + (simVel * deltaT);
+    pressureAtmos = altToPress(altitude);
+    pressureChamber = pressureAtmos;
+    if (simVel < 0)
+    {
+      simMode = APOGEE;
+    }
+    break;
+  case APOGEE:
+    deltaPressure = Chamb.readPressure() - pressureAtmos;
+    simMode = DROUGE;
+  case DROUGE:
+    accelZ = 1;
+    simVel = drougeSpeed;
+    altitude = altitude + (simVel * deltaT);
+    pressureAtmos = altToPress(altitude);
+    pressureChamber = realPress - deltaPressure;
+    if (altitude < mainAlt)
+    {
+      simMode = MAIN;
+    }
+    break;
+  case MAIN:
+    accelZ = 1;
+    simVel = mainSpeed;
+    altitude = altitude + (simVel * deltaT);
+    pressureAtmos = altToPress(altitude);
+    pressureChamber = realPress - deltaPressure;
+    if (altitude < 0)
+    {
+      simMode = FINISHED;
+    }
+    break;
+  case FINISHED:
+    return 1;
+    break;
   }
+
+  lastSimTime = currentTime;
+  sprintf(cbuff, "Main mode: %i, Sim mode: %i, Time: %.3f, DeltaT: %.3f, Alt: %.2f, Sim velocity: %.2f, Calc velocity %.2f, Press atmos: %.0f, Press chamb: %.0f, Real chamb press: %.0f, deltaP: %li, AccelZ: %.2f",mode, simMode, simTime, deltaT, altitude, simVel, actualVelocity, pressureAtmos, pressureChamber, realPress, (int64_t)deltaPressure), (float)accelZ;
+  Serial.println(cbuff);
+  return (0);
+}
+
+long altToPress(uint16_t alt)
+{
+  static float P0 = 101325;
+  static float L = 0.0065;
+  static float T0 = 288.15;
+  static float g = 9.80665;
+  static float M = 0.02896;
+  static float R = 8.31447;
+  float base = (1 - (L * alt) / T0);
+  float expo = ((g * M) / (R * L));
+  long pressure = P0 * powf(base, expo);
+
+  return pressure;
 }
 
 void clearArray(char *Array, uint8_t len)
@@ -524,10 +601,11 @@ void SerialCMDHandle()
       break;
       case 'P':
       {
-        char numBuff[6] = {buffer[3], buffer[4], buffer[5],buffer[6], buffer[7], buffer[8]};
+        char numBuff[6] = {buffer[3], buffer[4], buffer[5], buffer[6], buffer[7], buffer[8]};
         float set = strtol(numBuff, NULL, 10);
         char buff[50];
-        if (set > 100000){
+        if (set > 100000)
+        {
           sprintf(buff, "Going to %.1f Pa", set);
           Serial.println(buff);
           targetPressure = set;
@@ -535,10 +613,16 @@ void SerialCMDHandle()
           ActuatorPID.SetMode(AUTOMATIC);
           timeInterval = expRunTime;
         }
-        else{
+        else
+        {
           Serial.print("Override disabled");
           override = false;
         }
+      }
+      break;
+      case 'R':
+      {
+        sitl = true;
       }
       break;
       }
@@ -553,7 +637,7 @@ void Autotune()
 {
   PIDAutotuner tuner = PIDAutotuner();
   tuner.setTargetInputValue(tunePress);
-  tuner.setLoopInterval((expRunTime*1000));
+  tuner.setLoopInterval((expRunTime * 1000));
   tuner.setOutputRange(-maxSpeed, maxSpeed);
   tuner.setZNMode(PIDAutotuner::znModeBasicPID);
   tuner.startTuningLoop();
@@ -565,7 +649,7 @@ void Autotune()
     float input = Chamb.readPressure();
     float output = tuner.tunePID(input);
     setSpeed(output);
-    while (micros() - microseconds < (expRunTime*1000))
+    while (micros() - microseconds < (expRunTime * 1000))
       delayMicroseconds(1);
   }
 

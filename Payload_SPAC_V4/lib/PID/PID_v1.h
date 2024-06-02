@@ -59,6 +59,7 @@ class PID
 	float GetKd();						  // where it's important to know what is actually 
 	int GetMode();						  //  inside the PID.
 	int GetDirection();					  //
+	int pOn;
 
   private:
 	void Initialize();
@@ -72,7 +73,6 @@ class PID
     float kd;                  // * (D)erivative Tuning Parameter
 
 	int controllerDirection;
-	int pOn;
 
     float *myInput;              // * Pointers to the Input, Output, and Setpoint variables
     float *myOutput;             //   This creates a hard link between the variables and the 

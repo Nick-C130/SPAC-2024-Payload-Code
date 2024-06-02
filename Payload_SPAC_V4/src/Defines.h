@@ -12,6 +12,7 @@
 #include <pidautotuner.h>  //https://github.com/jackw01/arduino-pid-autotuner
 #include <EEPROM.h>
 #include <PID_v1.h>
+#include <math.h>
 
 //************** Pin defines *************//
 #define LED1 0          // Status LED1
@@ -58,7 +59,12 @@
 #define Kd 0.002541
 
 //************** STIL defines *************//
-#define SITLLength 24
+#define burnAccel 200
+#define burnTime 2.4
+#define dragAccel -45
+#define drougeSpeed -26
+#define mainSpeed -10
+#define mainAlt 330
 
 //************** Mode defines *************//
 enum modeTypes{
@@ -67,6 +73,16 @@ enum modeTypes{
     ASCENT,
     RUNNING,
     DONE
+};
+
+enum simModeTypes{
+    SIM_INIT = 0,
+    BOOST,
+    COAST,
+    APOGEE,
+    DROUGE,
+    MAIN,
+    FINISHED
 };
 
 #endif
