@@ -13,6 +13,7 @@
 #include <EEPROM.h>
 #include <PID_v1.h>
 #include <math.h>
+#include "LittleFS.h"
 
 //************** Pin defines *************//
 #define LED1 0          // Status LED1
@@ -50,8 +51,9 @@
 #define launchAccel 20          // Condition for data saving to begin
 #define minVel 10               // Minimum velocity for both ascent detection and apogee detection
 #define tunePress 140000        //Pa
-#define expRunTime 1            //ms between updates
+#define expRunTime 5            //ms between updates
 #define offsetPressure 1000     //Pa over atmos that the chamber tries to hold
+#define safeTime 1000           //Time in ms after landing to copy data across to SD
 
 //************** PID defines *************//
 #define Kp 0.033247
@@ -63,7 +65,7 @@
 #define burnTime 2.4
 #define dragAccel -45
 #define drougeSpeed -26
-#define mainSpeed -10
+#define mainSpeed -12
 #define mainAlt 330
 
 //************** Mode defines *************//

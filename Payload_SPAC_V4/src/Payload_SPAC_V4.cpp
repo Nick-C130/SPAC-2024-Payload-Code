@@ -8,6 +8,7 @@ unsigned long currentTime;        // Variable for time (ms)
 unsigned long previousTime = 0;   // Initial time variable (ms)
 unsigned long timeInterval = 100; // Initial interval between sensor readings (ms)
 unsigned long deltaTime;          // Calculates time difference (s)
+unsigned long touchdownTime = 0;
 
 float actualVelocity; // Velocity as calculated by barometer (m/s)
 
@@ -54,9 +55,11 @@ long deltaPressure;
 unsigned long currentSimTime;
 unsigned long sitlStartTime;
 float simVel;
-unsigned long lastSimTime; 
+unsigned long lastSimTime;
 
 char cbuff[512];
+
+LittleFS_QSPIFlash flash;
 
 struct PIDVals
 {
@@ -76,6 +79,7 @@ long altToPress(uint16_t alt);
 void readData();
 bool setSpeed(int speed);
 void Autotune();
+void FlashToSD();
 uint8_t compute_checksum(float f1, float f2, float f3);
 
 int main()
@@ -88,7 +92,11 @@ int main()
     {
       if (sitl)
       {
-        if(sim()){sitl = false;}
+        if (sim())
+        {
+          sitl = false;
+          // mode = DONE;
+        }
       } // If doing SITL testing recieve SITL data
       else
       {
@@ -99,18 +107,18 @@ int main()
       {
         currentPressure = pressureChamber;
         ActuatorPID.Compute();
-        sprintf(cbuff, "Tgt: %lu, Crnt: %lu, cmdVel: %i", (unsigned int)targetPressure, (unsigned long)currentPressure, (uint16_t)cmdVel);
+        sprintf(cbuff, "Tgt: %i, Crnt: %i, cmdVel: %i", (unsigned int)targetPressure, (unsigned int)currentPressure, (int)cmdVel);
         Serial.println(cbuff);
         setSpeed(cmdVel);
       }
 
-      actualVelocity = 1000*(altitude - previousAltitude) / (float)(currentTime - previousTime);
+      actualVelocity = 1000 * (altitude - previousAltitude) / (float)(currentTime - previousTime);
 
       switch (mode)
       {
       case INIT: // Initialising
       {
-        Serial.begin(115200);
+        Serial.begin(230400);
         Wire.begin();  // BMP + IMU sensors
         Wire2.begin(); // Motor controller
 
@@ -121,7 +129,7 @@ int main()
         pinMode(LED4, OUTPUT);
 
         jrk.setTarget(startHeight);
-        delay(1000);
+        delay(5000);
 
         if (!SD.begin(BUILTIN_SDCARD))
         {                                  // Initial SD card check
@@ -130,21 +138,12 @@ int main()
           sdAv = false;
         }
 
-        currentDataFileName = getNextFileName("Sensor Data", ".csv");
-        if (sdAv)
+        if (!flash.begin())
         {
-          dataFile = SD.open(currentDataFileName.c_str(), FILE_WRITE); // Initialize the dataFile object
-          if (dataFile)
-          {
-            dataFile.println("Timestamp (ms),Altitude (m),Measured Velocity (m/s),Atmos_P (hPa),Chamb_P (hPa),Atmos_T (C),Chamb_T (C), AccelZ (g), Actuator Height (mm),Battery V (mV), Actuator Current (mA)"); // Header Row
-            dataFile.close();
-          }
-          else
-          {
-            digitalWrite(BUILTIN_LED, HIGH);
-            digitalWrite(LED4, HIGH);
-          }
+          EventLog("Flash error");
         }
+
+        FlashToSD();
 
         currentEventFileName = getNextFileName("Events", ".txt");
         if (sdAv)
@@ -169,9 +168,7 @@ int main()
         {
           digitalWrite(LED1, HIGH); // If the Atmos isn't detected LED 1 on
           digitalWrite(LED4, HIGH);
-          char buff[20];
-          sprintf(buff, "Atmos BP Error: %i", status);
-          Serial.println(buff);
+          EventLog("Atmos BP error");
         }
         Atmos.setSampling(Atmos.MODE_NORMAL, Atmos.SAMPLING_X16, Atmos.SAMPLING_X16, Atmos.FILTER_OFF, Atmos.STANDBY_MS_1);
 
@@ -181,9 +178,7 @@ int main()
         {
           digitalWrite(LED2, HIGH); // If the Chamb isn't detected LED 2 on
           digitalWrite(LED4, HIGH);
-          char buff[20];
-          sprintf(buff, "Chamber BP Error: %i", status);
-          Serial.println(buff);
+          EventLog("Chamb BP error");
         }
         Chamb.setSampling(Chamb.MODE_NORMAL, Chamb.SAMPLING_X16, Chamb.SAMPLING_X16, Chamb.FILTER_OFF, Chamb.STANDBY_MS_1);
 
@@ -192,9 +187,7 @@ int main()
         {
           digitalWrite(LED3, HIGH); // If the MPU isn't detected LED 3 on
           digitalWrite(LED4, HIGH);
-          char buff[20];
-          sprintf(buff, "MPU Error: %i", status);
-          Serial.println(buff);
+          EventLog("MPU error");
         }
         MPU.setAccelerometerRange(MPU6050_RANGE_16_G);
         MPU.setGyroRange(MPU6050_RANGE_500_DEG);
@@ -226,12 +219,18 @@ int main()
       break;
       case READY:
       {
-        if ((accelZ >= launchAccel) && (actualVelocity >= minVel))
+        if (((accelZ >= launchAccel) || (accelZ <= -launchAccel)) && (actualVelocity >= minVel))
         { // Detect launch based on both acceleration and velocity
           mode = ASCENT;
           timeInterval = expRunTime;
           EventLog("Liftoff detected");
           ActuatorPID.SetMode(AUTOMATIC);
+          currentDataFileName = getNextFileName("Sensor Data", ".csv");
+          dataFile = flash.open(currentDataFileName.c_str(), FILE_WRITE); // Initialize the dataFile object
+          if (dataFile)
+          {
+            dataFile.println("Timestamp (ms),Altitude (m),Measured Velocity (m/s),Atmos_P (hPa),Chamb_P (hPa),Atmos_T (C),Chamb_T (C), AccelZ (g), Actuator Height (mm),Battery V (mV), Actuator Current (mA)"); // Header Row
+          }          
         }
       }
       break;
@@ -252,15 +251,22 @@ int main()
         currentPressure = pressureChamber;
         ActuatorPID.Compute();
         setSpeed(cmdVel);
-        if (altitude < groundAltitude && actualVelocity <= minVel)
+        if (altitude < groundAltitude && actualVelocity >= -minVel)
         {
           mode = DONE;
           EventLog("Landing");
+          touchdownTime = currentTime;
+          dataFile.close(); // Close the file
         } // Detect landing with alt and velocity
       }
       break;
       case DONE:
       {
+        Serial.println((currentTime - touchdownTime));
+        if ((currentTime - touchdownTime) >= safeTime)
+        {
+          FlashToSD();
+        }
         delay(1);
       }
       break;
@@ -315,20 +321,22 @@ String getNextFileName(String name, String type)
 
 void DataSave()
 {
-  dataFile = SD.open(currentDataFileName.c_str(), FILE_WRITE);
   if (dataFile)
   {
     char buff[255];
     sprintf(buff, "%lu, %.2f, %.2f, %f, %f, %.2f, %.2f, %.2f, %f, %f, %f\n",
             currentTime, altitude, actualVelocity, pressureAtmos, pressureChamber, temperatureAtmos, temperatureChamber, accelZ, actuatorHeight, actuatorVoltage, actuatorCurrent);
-    dataFile.print(buff); // Pressure in chamber (hPa)
-    dataFile.close();     // Close the file
+    dataFile.print(buff);
   }
   return;
 }
 
 void EventLog(String event)
 {
+  if (Serial.availableForWrite())
+  {
+    Serial.println(event);
+  }
   if (sdAv)
   {
     dataFile = SD.open(currentEventFileName.c_str(), FILE_WRITE);
@@ -338,7 +346,6 @@ void EventLog(String event)
       dataFile.print(",");
       dataFile.println(event); // Header Row
       dataFile.close();        // Close the file
-      Serial.println(event);
     }
   }
   return;
@@ -362,8 +369,8 @@ void readData()
 bool sim()
 {
   currentSimTime = millis();
-  float deltaT = (currentSimTime - lastSimTime)/1000.0;
-  float simTime = (currentSimTime - sitlStartTime)/1000.0;
+  float deltaT = (currentSimTime - lastSimTime) / 1000.0;
+  float simTime = (currentSimTime - sitlStartTime) / 1000.0;
   float realPress = Chamb.readPressure();
 
   switch (simMode)
@@ -378,7 +385,7 @@ bool sim()
     Serial.println("Starting new sim");
     break;
   case BOOST:
-    accelZ = burnAccel/10;
+    accelZ = burnAccel / 10;
     simVel = simVel + (burnAccel * deltaT);
     altitude = altitude + (simVel * deltaT);
     pressureAtmos = altToPress(altitude);
@@ -389,7 +396,7 @@ bool sim()
     }
     break;
   case COAST:
-    accelZ = dragAccel/10;
+    accelZ = dragAccel / 10;
     simVel = simVel + (dragAccel * deltaT);
     altitude = altitude + (simVel * deltaT);
     pressureAtmos = altToPress(altitude);
@@ -425,12 +432,18 @@ bool sim()
     }
     break;
   case FINISHED:
+    accelZ = 1;
+    simVel = 0;
+    altitude = altitude;
+    actualVelocity = 0;
+    pressureAtmos = altToPress(altitude);
+    pressureChamber = realPress - deltaPressure;
     return 1;
     break;
   }
 
   lastSimTime = currentTime;
-  sprintf(cbuff, "Main mode: %i, Sim mode: %i, Time: %.3f, DeltaT: %.3f, Alt: %.2f, Sim velocity: %.2f, Calc velocity %.2f, Press atmos: %.0f, Press chamb: %.0f, Real chamb press: %.0f, deltaP: %li, AccelZ: %.2f",mode, simMode, simTime, deltaT, altitude, simVel, actualVelocity, pressureAtmos, pressureChamber, realPress, (int64_t)deltaPressure), (float)accelZ;
+  sprintf(cbuff, "Main mode: %i, Sim mode: %i, Time: %.3f, DeltaT: %.3f, Alt: %.2f, Sim velocity: %.2f, Calc velocity %.2f, Press atmos: %.0f, Press chamb: %.0f, Real chamb press: %.0f, deltaP: %i, AccelZ: %.2f", mode, simMode, simTime, deltaT, altitude, simVel, actualVelocity, pressureAtmos, pressureChamber, realPress, (int)deltaPressure, (float)accelZ);
   Serial.println(cbuff);
   return (0);
 }
@@ -654,13 +667,53 @@ void Autotune()
   }
 
   uint8_t checksum = compute_checksum(tuner.getKp(), tuner.getKi(), tuner.getKd());
-  PIDVals Tuned = {tuner.getKp(), tuner.getKi(), tuner.getKd(), checksum};
+  PIDVals Tuned = {(float)tuner.getKp(), (float)tuner.getKi(), (float)tuner.getKd(), checksum};
   EEPROM.put(0, Tuned);
   char buff[50];
   sprintf(buff, "Kp %f, Ki %f, Kd %f", tuner.getKp(), tuner.getKi(), tuner.getKd());
   Serial.println(buff);
   EventLog("PID Tuned");
   return;
+}
+
+void FlashToSD()
+{
+  while (true)
+  {
+    dataFile = flash.open("/").openNextFile();
+    String fileName = dataFile.name();
+    if (!dataFile)
+    {
+      return;
+    }
+    File sdFile = SD.open(dataFile.name(), FILE_WRITE);
+    if (dataFile && sdFile)
+    {
+      sprintf(cbuff, "Dumping file: %s of size: %i", dataFile.name(), (int)dataFile.size());
+      Serial.println(cbuff);
+      // open the file.
+      dataFile = flash.open(fileName.c_str());
+
+      // if the file is available, write to it:
+      if (dataFile)
+      {
+        while (dataFile.available())
+        {
+          uint8_t data = dataFile.read();
+          Serial.write(data);
+          sdFile.write(data);
+        }
+        dataFile.close();
+        sdFile.close();
+        flash.remove(fileName.c_str());
+      }
+      // if the file isn't open, pop up an error:
+      else
+      {
+        Serial.println("error opening datalog.txt");
+      }
+    }
+  }
 }
 
 uint8_t compute_checksum(float f1, float f2, float f3)
