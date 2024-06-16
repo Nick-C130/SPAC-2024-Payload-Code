@@ -53,7 +53,7 @@
 #define tunePress 140000        //Pa
 #define expRunTime 5            //ms between updates
 #define offsetPressure 1000     //Pa over atmos that the chamber tries to hold
-#define safeTime 1000           //Time in ms after landing to copy data across to SD
+#define safeTime 60000          //Time in ms after landing to copy data across to SD
 
 //************** PID defines *************//
 #define Kp 0.033247

@@ -262,7 +262,6 @@ int main()
       break;
       case DONE:
       {
-        Serial.println((currentTime - touchdownTime));
         if ((currentTime - touchdownTime) >= safeTime)
         {
           FlashToSD();
